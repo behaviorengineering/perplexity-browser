@@ -2,24 +2,25 @@
 
 BIN ?= bin/perplexity-browser-mcp
 SMOKE_BIN ?= bin/smoke
+GO ?= GOWORK=off go
 
 bootstrap:
-	go mod tidy
-	go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium
+	$(GO) mod tidy
+	$(GO) run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium
 
 tidy:
-	go mod tidy
+	$(GO) mod tidy
 
 build:
 	mkdir -p bin
-	go build -o $(BIN) ./cmd/perplexity-browser-mcp
+	$(GO) build -o $(BIN) ./cmd/perplexity-browser-mcp
 
 test:
-	go test ./...
+	$(GO) test ./...
 
 smoke: build
 	mkdir -p bin
-	go build -o $(SMOKE_BIN) ./cmd/smoke
+	$(GO) build -o $(SMOKE_BIN) ./cmd/smoke
 	$(SMOKE_BIN)
 
 install: build
