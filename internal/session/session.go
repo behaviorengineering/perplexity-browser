@@ -94,7 +94,11 @@ func (m *Manager) EnsureBrowser(ctx context.Context) error {
 func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 	_ = ctx
 	if m.page != nil {
-		return nil
+		if alive := m.pageAliveLocked(); alive {
+			return nil
+		}
+		m.log.Info("browser context dead; relaunching from persistent profile", "user_data_dir", m.cfg.UserDataDir)
+		m.dropContextLocked()
 	}
 	if err := os.MkdirAll(m.cfg.UserDataDir, 0o700); err != nil {
 		return fmt.Errorf("create user data dir: %w", err)
@@ -112,10 +116,10 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 	}
 
 	opts := playwright.BrowserTypeLaunchPersistentContextOptions{
-		Headless: playwright.Bool(m.cfg.Headless),
+		Headless:        playwright.Bool(m.cfg.Headless),
 		AcceptDownloads: playwright.Bool(true),
 		DownloadsPath:   playwright.String(m.cfg.ExportDir),
-		Viewport: &playwright.Size{Width: 1280, Height: 900},
+		Viewport:        &playwright.Size{Width: 1280, Height: 900},
 	}
 	if m.cfg.Channel != "" {
 		opts.Channel = playwright.String(m.cfg.Channel)
@@ -141,6 +145,40 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 	}
 	m.log.Info("browser ready", "user_data_dir", m.cfg.UserDataDir, "headless", m.cfg.Headless)
 	return nil
+}
+
+// dropContextLocked closes the browser context but keeps the Playwright driver
+// and the on-disk user-data profile (cookies / login survive).
+func (m *Manager) dropContextLocked() {
+	m.threadID = ""
+	m.mode = ""
+	if m.browser != nil {
+		_ = m.browser.Close()
+		m.browser = nil
+	}
+	m.page = nil
+}
+
+func (m *Manager) pageAliveLocked() bool {
+	if m.page == nil {
+		return false
+	}
+	_, err := m.page.Evaluate("() => true")
+	if err == nil {
+		return true
+	}
+	return !isTargetClosed(err)
+}
+
+func isTargetClosed(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "target closed") ||
+		strings.Contains(s, "has been closed") ||
+		strings.Contains(s, "browser has been closed") ||
+		strings.Contains(s, "context or browser has been closed")
 }
 
 // CloseBrowser stops the browser context and Playwright driver.
@@ -188,20 +226,30 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 
 	out.ThreadID = m.threadID
 	if m.page != nil {
-		out.BrowserOpen = true
-		out.URL = m.page.URL()
-		loggedIn, err := detectLogin(m.page)
-		if err != nil {
-			out.Message = err.Error()
-			out.LoggedIn = false
+		if !m.pageAliveLocked() {
+			m.log.Info("status: dead page; will relaunch persistent profile")
+			m.dropContextLocked()
 		} else {
-			out.LoggedIn = loggedIn
-			if !loggedIn {
-				out.Status = result.StatusNeedLogin
-				out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+			out.BrowserOpen = true
+			out.URL = m.page.URL()
+			loggedIn, err := detectLogin(m.page)
+			if err != nil {
+				if isTargetClosed(err) {
+					m.dropContextLocked()
+				} else {
+					out.Message = err.Error()
+					out.LoggedIn = false
+					return out
+				}
+			} else {
+				out.LoggedIn = loggedIn
+				if !loggedIn {
+					out.Status = result.StatusNeedLogin
+					out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+				}
+				return out
 			}
 		}
-		return out
 	}
 
 	if !openBrowser {
@@ -216,10 +264,25 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 		return out
 	}
 	if err := m.gotoHomeLocked(ctx); err != nil {
-		out.Status = result.StatusError
-		out.Message = err.Error()
-		out.BrowserOpen = m.page != nil
-		return out
+		if isTargetClosed(err) {
+			m.dropContextLocked()
+			if err2 := m.ensureBrowserLocked(ctx); err2 != nil {
+				out.Status = result.StatusError
+				out.Message = err2.Error()
+				return out
+			}
+			if err2 := m.gotoHomeLocked(ctx); err2 != nil {
+				out.Status = result.StatusError
+				out.Message = err2.Error()
+				out.BrowserOpen = m.page != nil
+				return out
+			}
+		} else {
+			out.Status = result.StatusError
+			out.Message = err.Error()
+			out.BrowserOpen = m.page != nil
+			return out
+		}
 	}
 	out.BrowserOpen = true
 	out.URL = m.page.URL()

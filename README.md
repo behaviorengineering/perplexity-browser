@@ -27,12 +27,14 @@ make smoke       # prints session JSON (need_login on a cold profile is OK)
 Requires **playwright-go v0.6100.0+** (assembles driver from npm + nodejs.org). See [scripts/bootstrap-note.md](scripts/bootstrap-note.md).
 
 
-Profile (dedicated; not your daily Chrome profile):
+Profile (dedicated Chromium user-data dir; **login cookies persist** across MCP restarts):
 
 ```text
 ~/.perplexity-browser-mcp/profile
 ~/.perplexity-browser-mcp/exports
 ```
+
+If the browser window is closed, the next tool call relaunches from that same profile (you should not need to sign in again). `close` only stops the window; it does **not** wipe the profile.
 
 ## Cursor MCP config
 
