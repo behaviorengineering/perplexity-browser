@@ -6,7 +6,7 @@ GO ?= GOWORK=off go
 
 bootstrap:
 	$(GO) mod tidy
-	$(GO) run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium
+	$(GO) run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install chromium
 
 tidy:
 	$(GO) mod tidy

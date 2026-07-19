@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.4.0
-	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/mxschmitt/playwright-go v0.6100.0
 )
 
 require (

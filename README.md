@@ -18,13 +18,13 @@ Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
 ## Setup
 
 ```bash
-make bootstrap   # go mod tidy + Playwright Chromium driver
+make bootstrap   # go mod tidy + Playwright Chromium (npm + nodejs driver assemble)
 make build
 make test
-make smoke       # headed browser → prints session JSON (need_login is OK)
+make smoke       # prints session JSON (need_login on a cold profile is OK)
 ```
 
-If `make bootstrap` fails downloading the Go Playwright **driver** zip, see [scripts/bootstrap-note.md](scripts/bootstrap-note.md). Unit tests and `make build` still work.
+Requires **playwright-go v0.6100.0+** (assembles driver from npm + nodejs.org). See [scripts/bootstrap-note.md](scripts/bootstrap-note.md).
 
 
 Profile (dedicated; not your daily Chrome profile):

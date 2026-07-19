@@ -1,11 +1,30 @@
 # Bootstrap note
 
-`playwright-go` downloads a platform driver zip from Playwright CDNs (`playwright.azureedge.net` mirrors).
-As of 2026-07-19 those driver URLs return 404/400 from some networks; Chromium via `npx playwright` may still work.
+## Fixed (P1.1)
 
-Until the Go driver download works:
+Upgrade to **`github.com/mxschmitt/playwright-go@v0.6100.0`**. That release **assembles** the driver from:
 
-1. `make build` and `make test` succeed without the driver.
-2. `make smoke` / live browser tools need `playwright install` for the Go driver to succeed.
-3. Retry: `go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium`
-4. Optional: set `PLAYWRIGHT_DOWNLOAD_HOST` if you mirror drivers yourself.
+- `playwright-core` on the npm registry
+- Node.js from `nodejs.org`
+
+It does **not** use the retired `/builds/driver` CDN (`playwright.azureedge.net`), which returns 404/400.
+
+```bash
+make bootstrap   # go mod tidy + playwright install chromium
+make smoke       # headed by default; HEADLESS=1 for CI-ish
+```
+
+`need_login` from smoke is success for a cold profile: browser opened and hit perplexity.ai.
+
+## Env (optional)
+
+| Variable | Purpose |
+|----------|---------|
+| `PLAYWRIGHT_NODEJS_PATH` | Use a preinstalled Node; skip Node download |
+| `PLAYWRIGHT_GO_NPM_REGISTRY` | npm registry mirror for playwright-core |
+| `NODE_MIRROR` | Node.js dist mirror |
+| `PERPLEXITY_BROWSER_HEADLESS` | `1` for headless smoke |
+
+## History
+
+Before v0.6100.0, Go bindings downloaded a platform zip from azureedge mirrors. Microsoft stopped publishing those zips; installs failed with 404.
