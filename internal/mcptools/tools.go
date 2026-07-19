@@ -27,12 +27,12 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "perplexity_research",
-		Description: "Start a new Perplexity thread (Search or Deep research), submit a prepared prompt, and wait for the answer. P2: full automation; P1 returns not_ready after ensuring session.",
+		Description: "Start a new Perplexity thread (Search or Deep research), submit a prepared prompt, and wait for the answer.",
 	}, h.research)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "perplexity_continue",
-		Description: "Send a follow-up message in the active Perplexity thread and wait for the next answer. Implemented in P2.",
+		Description: "Send a follow-up message in the active Perplexity thread and wait for the next answer.",
 	}, h.continueTurn)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -140,51 +140,23 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, in rese
 		})
 	}
 	defer h.mgr.End()
-
-	s := h.mgr.Status(ctx, true)
-	mode := strings.TrimSpace(in.Mode)
-	if mode == "" {
-		mode = "deep"
-	}
-	out := result.Turn{
-		Base: result.Base{
-			Status:   result.StatusNotReady,
-			Message:  "P1: session open only; perplexity_research automation lands in P2 (mode toggle, submit, wait)",
-			URL:      s.URL,
-			ThreadID: s.ThreadID,
-		},
-		Mode: mode,
-	}
-	if s.Status == result.StatusNeedLogin || !s.LoggedIn {
-		out.Status = result.StatusNeedLogin
-		out.Message = s.Message
-		return jsonResult(out)
-	}
-	if s.Status == result.StatusError {
-		out.Status = result.StatusError
-		out.Message = s.Message
-		return jsonResult(out)
-	}
 	_ = in.TitleHint
-	_ = in.TimeoutMS
-	return jsonResult(out)
+	return jsonResult(h.mgr.Research(ctx, in.Prompt, in.Mode, in.TimeoutMS))
 }
 
 func (h *handlers) continueTurn(ctx context.Context, _ *mcp.CallToolRequest, in continueIn) (*mcp.CallToolResult, any, error) {
-	_ = ctx
 	if strings.TrimSpace(in.Message) == "" {
 		return jsonResult(result.Turn{
 			Base: result.Base{Status: result.StatusError, Message: "message is required"},
 		})
 	}
-	return jsonResult(result.Turn{
-		Base: result.Base{
-			Status:   result.StatusNotReady,
-			Message:  "P2: perplexity_continue not implemented yet",
-			ThreadID: firstNonEmpty(in.ThreadID, h.mgr.ThreadID()),
-			URL:      h.mgr.PageURL(),
-		},
-	})
+	if !h.mgr.TryBegin() {
+		return jsonResult(result.Turn{
+			Base: result.Base{Status: result.StatusBusy, Message: "another tool is running", Busy: true},
+		})
+	}
+	defer h.mgr.End()
+	return jsonResult(h.mgr.Continue(ctx, in.Message, in.ThreadID, in.TimeoutMS))
 }
 
 func (h *handlers) export(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, any, error) {
