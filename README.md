@@ -2,7 +2,7 @@
 
 Go MCP server that drives **perplexity.ai** in a headed Playwright browser (Pro login, Deep research, continue, export).
 
-**Status:** P2 — `perplexity_session`, `perplexity_research`, `perplexity_continue` wired; export in P3.
+**Status:** P3 — session, research, continue, and export are wired.
 
 Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
 
@@ -13,7 +13,7 @@ Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
 | `perplexity_session` | **Yes** — `status`, `wait_for_login`, `close`, `cancel` |
 | `perplexity_research` | **Yes** — new thread, mode (`deep`/`search`), submit, wait, extract |
 | `perplexity_continue` | **Yes** — follow-up on active thread |
-| `perplexity_export` | Stub until P3 |
+| `perplexity_export` | **Yes** — markdown file under export dir (`ui_export` or `scrape`) |
 
 ## Setup
 

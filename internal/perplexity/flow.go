@@ -104,70 +104,82 @@ func SetMode(page playwright.Page, mode string) error {
 		return fmt.Errorf("mode must be %q or %q", ModeDeep, ModeSearch)
 	}
 
-	// Open mode menu: button near Search / Research / Deep.
+	dismissCookieBanner(page)
+
+	// Search is the default compose mode on current Perplexity UI. The "Search"
+	// control is often covered by sibling pills (e.g. Computer), so skip toggles
+	// when caller asked for search and a compose box is already present.
+	if mode == ModeSearch {
+		if _, err := composeBox(page); err == nil {
+			return nil
+		}
+	}
+
+	force := playwright.LocatorClickOptions{Force: playwright.Bool(true), Timeout: playwright.Float(8_000)}
+
+	// Open mode menu via the Search / Research control near compose.
 	opened := false
-	for _, name := range []string{"Search", "Research", "Deep research", "Deep Research", "Pro"} {
-		btn := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile("(?i)" + regexp.QuoteMeta(name))})
+	for _, name := range []string{"Search", "Deep research", "Research"} {
+		btn := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: name, Exact: playwright.Bool(true)})
 		n, err := btn.Count()
+		if err != nil || n == 0 {
+			btn = page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile("(?i)^" + regexp.QuoteMeta(name) + "$")})
+			n, err = btn.Count()
+		}
 		if err != nil || n == 0 {
 			continue
 		}
-		first := btn.First()
-		vis, _ := first.IsVisible()
-		if !vis {
-			continue
-		}
-		if err := first.Click(); err == nil {
+		if err := btn.First().Click(force); err == nil {
 			opened = true
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 			break
 		}
 	}
 	if !opened {
-		// Try chevron / menuitem trigger via text.
-		chev := page.GetByText(regexp.MustCompile(`(?i)(search|deep research|research)`))
-		n, _ := chev.Count()
-		if n > 0 {
-			_ = chev.First().Click()
-			time.Sleep(500 * time.Millisecond)
-			opened = true
+		if mode == ModeSearch {
+			return nil // prefer proceed over hard-fail for Search
 		}
-	}
-	if !opened {
 		return &ErrUIChanged{Op: "mode_open", Msg: "could not open Search/Deep research mode control"}
 	}
 
-	var target *regexp.Regexp
 	if mode == ModeDeep {
-		target = regexp.MustCompile(`(?i)deep\s*research|^research$`)
-	} else {
-		target = regexp.MustCompile(`(?i)^search$`)
+		deep := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)deep\s*research`)})
+		n, _ := deep.Count()
+		if n == 0 {
+			deep = page.GetByText(regexp.MustCompile(`(?i)deep\s*research`))
+			n, _ = deep.Count()
+		}
+		if n == 0 {
+			return &ErrUIChanged{Op: "mode_select", Msg: "Deep research option not found"}
+		}
+		if err := deep.First().Click(force); err != nil {
+			return &ErrUIChanged{Op: "mode_click", Msg: err.Error()}
+		}
+		time.Sleep(400 * time.Millisecond)
+		return nil
 	}
 
-	opt := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: target})
-	n, err := opt.Count()
-	if err != nil || n == 0 {
-		// Fallback: any clickable text matching the mode.
-		opt = page.GetByText(target)
-		n, err = opt.Count()
-		if err != nil || n == 0 {
-			return &ErrUIChanged{Op: "mode_select", Msg: fmt.Sprintf("option for mode %q not found", mode)}
-		}
+	// Search option inside the opened menu.
+	searchItem := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)^search$`)})
+	n, _ := searchItem.Count()
+	if n > 0 {
+		_ = searchItem.First().Click(force)
 	}
-	// Prefer Deep research over bare Research when both match.
-	chosen := opt.First()
-	if mode == ModeDeep {
-		deep := page.GetByText(regexp.MustCompile(`(?i)deep\s*research`))
-		dn, _ := deep.Count()
-		if dn > 0 {
-			chosen = deep.First()
-		}
-	}
-	if err := chosen.Click(); err != nil {
-		return &ErrUIChanged{Op: "mode_click", Msg: err.Error()}
-	}
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	return nil
+}
+
+func dismissCookieBanner(page playwright.Page) {
+	for _, label := range []string{"Accept", "Accept all", "I agree", "Got it", "OK"} {
+		btn := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile("(?i)^" + regexp.QuoteMeta(label) + "$")})
+		n, err := btn.Count()
+		if err != nil || n == 0 {
+			continue
+		}
+		_ = btn.First().Click(playwright.LocatorClickOptions{Force: playwright.Bool(true), Timeout: playwright.Float(2_000)})
+		time.Sleep(200 * time.Millisecond)
+		return
+	}
 }
 
 // SubmitPrompt types the prompt into compose and submits (Enter).

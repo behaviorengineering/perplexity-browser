@@ -137,7 +137,7 @@ func (m *Manager) connectCDPLocked() error {
 	m.browser = contexts[0]
 	pages := m.browser.Pages()
 	if len(pages) > 0 {
-		m.page = pages[0]
+		m.page = pickBestPage(pages)
 	} else {
 		page, err := m.browser.NewPage()
 		if err != nil {
@@ -149,8 +149,38 @@ func (m *Manager) connectCDPLocked() error {
 		}
 		m.page = page
 	}
-	m.log.Info("connected over CDP", "cdp_url", m.cfg.CDPURL, "pages", len(pages))
+	m.log.Info("connected over CDP", "cdp_url", m.cfg.CDPURL, "pages", len(m.browser.Pages()))
 	return nil
+}
+
+func pickBestPage(pages []playwright.Page) playwright.Page {
+	if len(pages) == 0 {
+		return nil
+	}
+	// Prefer a page that already looks logged in.
+	for _, p := range pages {
+		ok, err := detectLogin(p)
+		if err == nil && ok {
+			return p
+		}
+	}
+	// Prefer perplexity.ai without login query params.
+	for _, p := range pages {
+		u := strings.ToLower(p.URL())
+		if strings.Contains(u, "perplexity.ai") &&
+			!strings.Contains(u, "login") &&
+			!strings.Contains(u, "signup") &&
+			!botWall(p) {
+			return p
+		}
+	}
+	// Prefer any perplexity tab.
+	for _, p := range pages {
+		if strings.Contains(strings.ToLower(p.URL()), "perplexity.ai") {
+			return p
+		}
+	}
+	return pages[0]
 }
 
 func (m *Manager) launchPersistentLocked() error {
@@ -286,6 +316,11 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 			m.log.Info("status: dead page; will relaunch persistent profile")
 			m.dropContextLocked()
 		} else {
+			if m.cdpMode && m.browser != nil {
+				if best := pickBestPage(m.browser.Pages()); best != nil {
+					m.page = best
+				}
+			}
 			out.BrowserOpen = true
 			out.URL = m.page.URL()
 			loggedIn, err := detectLogin(m.page)
@@ -301,7 +336,13 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 				out.LoggedIn = loggedIn
 				if !loggedIn {
 					out.Status = result.StatusNeedLogin
-					out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+					if botWall(m.page) {
+						out.Message = "bot / security verification page detected; complete it in Chrome (CDP), then retry status"
+					} else if m.cfg.CDPURL != "" {
+						out.Message = "not logged in on the CDP Chrome tab; sign in there, open perplexity.ai home, then retry status"
+					} else {
+						out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+					}
 				}
 				return out
 			}
@@ -475,7 +516,16 @@ func detectLogin(page playwright.Page) (bool, error) {
 		return false, nil
 	}
 	url := strings.ToLower(page.URL())
-	if strings.Contains(url, "login") || strings.Contains(url, "signin") || strings.Contains(url, "auth") {
+	// Path-based auth walls only. Query flags like login-source=signupButton appear
+	// after a successful redirect while already logged in.
+	path := url
+	if i := strings.Index(path, "?"); i >= 0 {
+		path = path[:i]
+	}
+	if i := strings.Index(path, "#"); i >= 0 {
+		path = path[:i]
+	}
+	if strings.Contains(path, "/login") || strings.Contains(path, "/signin") || strings.Contains(path, "/auth/") {
 		return false, nil
 	}
 

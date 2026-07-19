@@ -37,7 +37,7 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "perplexity_export",
-		Description: "Export the full conversation to a markdown file for analysis. Implemented in P3.",
+		Description: "Export the full conversation to a markdown file for analysis (UI export when available, otherwise page scrape).",
 	}, h.export)
 }
 
@@ -160,16 +160,13 @@ func (h *handlers) continueTurn(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 func (h *handlers) export(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, any, error) {
-	_ = ctx
-	return jsonResult(result.Export{
-		Base: result.Base{
-			Status:   result.StatusNotReady,
-			Message:  "P3: perplexity_export not implemented yet",
-			ThreadID: firstNonEmpty(in.ThreadID, h.mgr.ThreadID()),
-			URL:      h.mgr.PageURL(),
-		},
-		Format: "markdown",
-	})
+	if !h.mgr.TryBegin() {
+		return jsonResult(result.Export{
+			Base: result.Base{Status: result.StatusBusy, Message: "another tool is running", Busy: true},
+		})
+	}
+	defer h.mgr.End()
+	return jsonResult(h.mgr.Export(ctx, in.ThreadID, in.Format, in.SaveDir))
 }
 
 func firstNonEmpty(a, b string) string {
