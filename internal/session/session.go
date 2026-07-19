@@ -25,9 +25,11 @@ type Manager struct {
 	runCtx context.Context
 	cancel context.CancelFunc
 
-	pw      *playwright.Playwright
-	browser playwright.BrowserContext
-	page    playwright.Page
+	pw         *playwright.Playwright
+	cdpBrowser playwright.Browser // set when connected over CDP
+	browser    playwright.BrowserContext
+	page       playwright.Page
+	cdpMode    bool
 
 	threadID string
 	mode     string
@@ -97,11 +99,8 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 		if alive := m.pageAliveLocked(); alive {
 			return nil
 		}
-		m.log.Info("browser context dead; relaunching from persistent profile", "user_data_dir", m.cfg.UserDataDir)
+		m.log.Info("browser context dead; reconnecting", "cdp", m.cfg.CDPURL != "", "user_data_dir", m.cfg.UserDataDir)
 		m.dropContextLocked()
-	}
-	if err := os.MkdirAll(m.cfg.UserDataDir, 0o700); err != nil {
-		return fmt.Errorf("create user data dir: %w", err)
 	}
 	if err := os.MkdirAll(m.cfg.ExportDir, 0o700); err != nil {
 		return fmt.Errorf("create export dir: %w", err)
@@ -113,6 +112,50 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 			return fmt.Errorf("playwright run: %w", err)
 		}
 		m.pw = pw
+	}
+
+	if m.cfg.CDPURL != "" {
+		return m.connectCDPLocked()
+	}
+	return m.launchPersistentLocked()
+}
+
+func (m *Manager) connectCDPLocked() error {
+	b, err := m.pw.Chromium.ConnectOverCDP(m.cfg.CDPURL)
+	if err != nil {
+		return fmt.Errorf("connect over CDP %s: %w (start Chrome with scripts/chrome-cdp.sh first)", m.cfg.CDPURL, err)
+	}
+	m.cdpBrowser = b
+	m.cdpMode = true
+	contexts := b.Contexts()
+	if len(contexts) == 0 {
+		_ = b.Close()
+		m.cdpBrowser = nil
+		m.cdpMode = false
+		return fmt.Errorf("CDP browser has no contexts")
+	}
+	m.browser = contexts[0]
+	pages := m.browser.Pages()
+	if len(pages) > 0 {
+		m.page = pages[0]
+	} else {
+		page, err := m.browser.NewPage()
+		if err != nil {
+			_ = b.Close()
+			m.cdpBrowser = nil
+			m.browser = nil
+			m.cdpMode = false
+			return fmt.Errorf("new page over CDP: %w", err)
+		}
+		m.page = page
+	}
+	m.log.Info("connected over CDP", "cdp_url", m.cfg.CDPURL, "pages", len(pages))
+	return nil
+}
+
+func (m *Manager) launchPersistentLocked() error {
+	if err := os.MkdirAll(m.cfg.UserDataDir, 0o700); err != nil {
+		return fmt.Errorf("create user data dir: %w", err)
 	}
 
 	opts := playwright.BrowserTypeLaunchPersistentContextOptions{
@@ -130,6 +173,7 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 		return fmt.Errorf("launch persistent context: %w", err)
 	}
 	m.browser = browser
+	m.cdpMode = false
 
 	pages := browser.Pages()
 	if len(pages) > 0 {
@@ -143,15 +187,25 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 		}
 		m.page = page
 	}
-	m.log.Info("browser ready", "user_data_dir", m.cfg.UserDataDir, "headless", m.cfg.Headless)
+	m.log.Info("browser ready", "user_data_dir", m.cfg.UserDataDir, "headless", m.cfg.Headless, "channel", m.cfg.Channel)
 	return nil
 }
 
-// dropContextLocked closes the browser context but keeps the Playwright driver
-// and the on-disk user-data profile (cookies / login survive).
+// dropContextLocked drops Playwright handles. In CDP mode it disconnects only;
+// Chrome itself is left running. Persistent profile cookies stay on disk.
 func (m *Manager) dropContextLocked() {
 	m.threadID = ""
 	m.mode = ""
+	if m.cdpMode {
+		if m.cdpBrowser != nil {
+			_ = m.cdpBrowser.Close() // disconnect from CDP
+			m.cdpBrowser = nil
+		}
+		m.browser = nil
+		m.page = nil
+		m.cdpMode = false
+		return
+	}
 	if m.browser != nil {
 		_ = m.browser.Close()
 		m.browser = nil
@@ -194,7 +248,9 @@ func (m *Manager) CloseBrowser() error {
 	m.mode = ""
 
 	var first error
-	if m.browser != nil {
+	if m.cdpMode {
+		m.dropContextLocked()
+	} else if m.browser != nil {
 		if err := m.browser.Close(); err != nil && first == nil {
 			first = err
 		}
@@ -263,25 +319,28 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 		out.Message = err.Error()
 		return out
 	}
-	if err := m.gotoHomeLocked(ctx); err != nil {
-		if isTargetClosed(err) {
-			m.dropContextLocked()
-			if err2 := m.ensureBrowserLocked(ctx); err2 != nil {
+	// CDP: do not force navigation (avoids fresh bot challenges). Use the open tab.
+	if m.cfg.CDPURL == "" {
+		if err := m.gotoHomeLocked(ctx); err != nil {
+			if isTargetClosed(err) {
+				m.dropContextLocked()
+				if err2 := m.ensureBrowserLocked(ctx); err2 != nil {
+					out.Status = result.StatusError
+					out.Message = err2.Error()
+					return out
+				}
+				if err2 := m.gotoHomeLocked(ctx); err2 != nil {
+					out.Status = result.StatusError
+					out.Message = err2.Error()
+					out.BrowserOpen = m.page != nil
+					return out
+				}
+			} else {
 				out.Status = result.StatusError
-				out.Message = err2.Error()
-				return out
-			}
-			if err2 := m.gotoHomeLocked(ctx); err2 != nil {
-				out.Status = result.StatusError
-				out.Message = err2.Error()
+				out.Message = err.Error()
 				out.BrowserOpen = m.page != nil
 				return out
 			}
-		} else {
-			out.Status = result.StatusError
-			out.Message = err.Error()
-			out.BrowserOpen = m.page != nil
-			return out
 		}
 	}
 	out.BrowserOpen = true
@@ -293,7 +352,13 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 		out.LoggedIn = loggedIn
 		if !loggedIn {
 			out.Status = result.StatusNeedLogin
-			out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+			if botWall(m.page) {
+				out.Message = "bot / security verification page detected; complete it in Chrome (CDP), then retry status"
+			} else if m.cfg.CDPURL != "" {
+				out.Message = "not logged in on the CDP Chrome tab; sign in there, open perplexity.ai home, then retry status"
+			} else {
+				out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
+			}
 		}
 	}
 	return out
@@ -406,6 +471,9 @@ func detectLogin(page playwright.Page) (bool, error) {
 	if page == nil {
 		return false, fmt.Errorf("no page")
 	}
+	if botWall(page) {
+		return false, nil
+	}
 	url := strings.ToLower(page.URL())
 	if strings.Contains(url, "login") || strings.Contains(url, "signin") || strings.Contains(url, "auth") {
 		return false, nil
@@ -424,7 +492,6 @@ func detectLogin(page playwright.Page) (bool, error) {
 			continue
 		}
 		if count > 0 {
-			// Visible sign-in CTA => need login.
 			vis, _ := loc.First().IsVisible()
 			if vis {
 				return false, nil
@@ -432,7 +499,6 @@ func detectLogin(page playwright.Page) (bool, error) {
 		}
 	}
 
-	// Compose box or library chrome suggests a session.
 	compose := page.Locator(`div[contenteditable="true"], textarea, [role="textbox"]`)
 	n, err := compose.Count()
 	if err != nil {
@@ -442,4 +508,30 @@ func detectLogin(page playwright.Page) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func botWall(page playwright.Page) bool {
+	if page == nil {
+		return false
+	}
+	hints := []string{
+		"security verification",
+		"verify you are not a bot",
+		"verifying you are human",
+		"just a moment",
+		"checking your browser",
+		"attention required",
+	}
+	for _, h := range hints {
+		loc := page.GetByText(h, playwright.PageGetByTextOptions{Exact: playwright.Bool(false)})
+		n, err := loc.Count()
+		if err != nil || n == 0 {
+			continue
+		}
+		vis, _ := loc.First().IsVisible()
+		if vis {
+			return true
+		}
+	}
+	return false
 }

@@ -10,16 +10,17 @@ import (
 
 // Config holds runtime paths and timeouts.
 type Config struct {
-	UserDataDir       string
-	ExportDir         string
-	BaseURL           string
-	Headless          bool
-	DefaultTimeoutMS  int
-	SearchTimeoutMS   int
-	PollMS            int
-	AnswerMaxChars    int
-	Channel           string
-	LogPrompts        bool
+	UserDataDir      string
+	ExportDir        string
+	BaseURL          string
+	Headless         bool
+	DefaultTimeoutMS int
+	SearchTimeoutMS  int
+	PollMS           int
+	AnswerMaxChars   int
+	Channel          string
+	CDPURL           string
+	LogPrompts       bool
 }
 
 // Load reads environment variables with defaults from the technical appendix.
@@ -37,6 +38,7 @@ func Load() Config {
 		PollMS:           envInt("PERPLEXITY_BROWSER_POLL_MS", 2_000),
 		AnswerMaxChars:   envInt("PERPLEXITY_BROWSER_ANSWER_MAX_CHARS", 120_000),
 		Channel:          strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CHANNEL")),
+		CDPURL:           strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CDP_URL")),
 		LogPrompts:       envBool("PERPLEXITY_BROWSER_LOG_PROMPTS", false),
 	}
 }
