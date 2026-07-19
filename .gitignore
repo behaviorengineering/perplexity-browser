@@ -1,0 +1,11 @@
+/bin/
+/dist/
+*.exe
+.DS_Store
+.idea/
+.vscode/
+
+# Local Playwright / MCP state (never commit)
+.profile-data/
+exports/
+*.log

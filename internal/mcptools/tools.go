@@ -1,0 +1,208 @@
+package mcptools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/xynova/perplexity-browser/internal/result"
+	"github.com/xynova/perplexity-browser/internal/session"
+)
+
+// Register attaches v1 tools to the MCP server.
+func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
+	if log == nil {
+		log = slog.Default()
+	}
+	h := &handlers{mgr: mgr, log: log}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "perplexity_session",
+		Description: "Check login/browser status, wait for human login, cancel an in-flight wait, or close the browser (keeps the profile).",
+	}, h.session)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "perplexity_research",
+		Description: "Start a new Perplexity thread (Search or Deep research), submit a prepared prompt, and wait for the answer. P2: full automation; P1 returns not_ready after ensuring session.",
+	}, h.research)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "perplexity_continue",
+		Description: "Send a follow-up message in the active Perplexity thread and wait for the next answer. Implemented in P2.",
+	}, h.continueTurn)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "perplexity_export",
+		Description: "Export the full conversation to a markdown file for analysis. Implemented in P3.",
+	}, h.export)
+}
+
+type handlers struct {
+	mgr *session.Manager
+	log *slog.Logger
+}
+
+type sessionIn struct {
+	Action    string `json:"action" jsonschema:"status, wait_for_login, close, or cancel"`
+	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"timeout for wait_for_login in milliseconds"`
+}
+
+type researchIn struct {
+	Prompt    string `json:"prompt" jsonschema:"full prepared prompt text"`
+	Mode      string `json:"mode,omitempty" jsonschema:"deep or search; default deep"`
+	TitleHint string `json:"title_hint,omitempty" jsonschema:"optional thread title hint without case PII"`
+	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"override wait timeout in milliseconds"`
+}
+
+type continueIn struct {
+	Message   string `json:"message" jsonschema:"follow-up message"`
+	ThreadID  string `json:"thread_id,omitempty" jsonschema:"optional thread id; defaults to active"`
+	TimeoutMS int    `json:"timeout_ms,omitempty"`
+}
+
+type exportIn struct {
+	ThreadID string `json:"thread_id,omitempty"`
+	Format   string `json:"format,omitempty" jsonschema:"markdown or text"`
+	SaveDir  string `json:"save_dir,omitempty"`
+}
+
+func jsonResult(v any) (*mcp.CallToolResult, any, error) {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: `{"status":"error","message":"marshal failed"}`}},
+			IsError: true,
+		}, nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
+	}, v, nil
+}
+
+func (h *handlers) session(ctx context.Context, _ *mcp.CallToolRequest, in sessionIn) (*mcp.CallToolResult, any, error) {
+	action := in.Action
+	if action == "" {
+		action = "status"
+	}
+	switch action {
+	case "status":
+		s := h.mgr.Status(ctx, true)
+		return jsonResult(s)
+	case "wait_for_login":
+		if !h.mgr.TryBegin() {
+			return jsonResult(result.Session{
+				Base: result.Base{Status: result.StatusBusy, Message: "another tool is running", Busy: true},
+			})
+		}
+		defer h.mgr.End()
+		s := h.mgr.WaitForLogin(ctx, in.TimeoutMS)
+		return jsonResult(s)
+	case "cancel":
+		h.mgr.Cancel()
+		return jsonResult(result.Session{
+			Base: result.Base{Status: result.StatusOK, Message: "cancel signalled", Busy: h.mgr.IsBusy()},
+		})
+	case "close":
+		if err := h.mgr.CloseBrowser(); err != nil {
+			return jsonResult(result.Session{
+				Base: result.Base{Status: result.StatusError, Message: err.Error()},
+			})
+		}
+		return jsonResult(result.Session{
+			Base:        result.Base{Status: result.StatusOK, Message: "browser closed; profile kept"},
+			UserDataDir: h.mgr.Config().UserDataDir,
+			ExportDir:   h.mgr.Config().ExportDir,
+			BrowserOpen: false,
+		})
+	default:
+		return jsonResult(result.Session{
+			Base: result.Base{
+				Status:  result.StatusError,
+				Message: fmt.Sprintf("unknown action %q (use status, wait_for_login, close, cancel)", action),
+			},
+		})
+	}
+}
+
+func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, in researchIn) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(in.Prompt) == "" {
+		return jsonResult(result.Turn{
+			Base: result.Base{Status: result.StatusError, Message: "prompt is required"},
+		})
+	}
+	if !h.mgr.TryBegin() {
+		return jsonResult(result.Turn{
+			Base: result.Base{Status: result.StatusBusy, Message: "another tool is running", Busy: true},
+		})
+	}
+	defer h.mgr.End()
+
+	s := h.mgr.Status(ctx, true)
+	mode := strings.TrimSpace(in.Mode)
+	if mode == "" {
+		mode = "deep"
+	}
+	out := result.Turn{
+		Base: result.Base{
+			Status:   result.StatusNotReady,
+			Message:  "P1: session open only; perplexity_research automation lands in P2 (mode toggle, submit, wait)",
+			URL:      s.URL,
+			ThreadID: s.ThreadID,
+		},
+		Mode: mode,
+	}
+	if s.Status == result.StatusNeedLogin || !s.LoggedIn {
+		out.Status = result.StatusNeedLogin
+		out.Message = s.Message
+		return jsonResult(out)
+	}
+	if s.Status == result.StatusError {
+		out.Status = result.StatusError
+		out.Message = s.Message
+		return jsonResult(out)
+	}
+	_ = in.TitleHint
+	_ = in.TimeoutMS
+	return jsonResult(out)
+}
+
+func (h *handlers) continueTurn(ctx context.Context, _ *mcp.CallToolRequest, in continueIn) (*mcp.CallToolResult, any, error) {
+	_ = ctx
+	if strings.TrimSpace(in.Message) == "" {
+		return jsonResult(result.Turn{
+			Base: result.Base{Status: result.StatusError, Message: "message is required"},
+		})
+	}
+	return jsonResult(result.Turn{
+		Base: result.Base{
+			Status:   result.StatusNotReady,
+			Message:  "P2: perplexity_continue not implemented yet",
+			ThreadID: firstNonEmpty(in.ThreadID, h.mgr.ThreadID()),
+			URL:      h.mgr.PageURL(),
+		},
+	})
+}
+
+func (h *handlers) export(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, any, error) {
+	_ = ctx
+	return jsonResult(result.Export{
+		Base: result.Base{
+			Status:   result.StatusNotReady,
+			Message:  "P3: perplexity_export not implemented yet",
+			ThreadID: firstNonEmpty(in.ThreadID, h.mgr.ThreadID()),
+			URL:      h.mgr.PageURL(),
+		},
+		Format: "markdown",
+	})
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
+}
