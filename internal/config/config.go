@@ -20,6 +20,8 @@ type Config struct {
 	AnswerMaxChars   int
 	Channel          string
 	CDPURL           string
+	CDPAutoLaunch    bool
+	ChromeApp        string
 	LogPrompts       bool
 }
 
@@ -39,6 +41,8 @@ func Load() Config {
 		AnswerMaxChars:   envInt("PERPLEXITY_BROWSER_ANSWER_MAX_CHARS", 120_000),
 		Channel:          strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CHANNEL")),
 		CDPURL:           strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CDP_URL")),
+		CDPAutoLaunch:    envBool("PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH", true),
+		ChromeApp:        envOr("PERPLEXITY_BROWSER_CHROME_APP", defaultChromeApp()),
 		LogPrompts:       envBool("PERPLEXITY_BROWSER_LOG_PROMPTS", false),
 	}
 }

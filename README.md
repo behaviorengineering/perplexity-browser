@@ -35,7 +35,19 @@ Profile (dedicated Chromium/Chrome user-data dir; **login cookies persist** acro
 ~/.perplexity-browser-mcp/exports
 ```
 
-If Cloudflare / “security verification” blocks you on **Chromium for Testing**, use real Chrome:
+If Cloudflare / “security verification” blocks you on **Chromium for Testing**, use real Chrome over CDP:
+
+```json
+"env": {
+  "PERPLEXITY_BROWSER_HEADLESS": "0",
+  "PERPLEXITY_BROWSER_USER_DATA_DIR": "/Users/YOU/.perplexity-browser-mcp/profile-chrome",
+  "PERPLEXITY_BROWSER_CDP_URL": "http://127.0.0.1:9222"
+}
+```
+
+When `PERPLEXITY_BROWSER_CDP_URL` is set, the MCP **auto-launches Google Chrome** with the same flags as `scripts/chrome-cdp.sh` if nothing is listening on that port (`PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=1`, default). Playwright-go then attaches over CDP. `close` disconnects only; Chrome stays open for login. Set `PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=0` to require a manual `chrome-cdp.sh` start.
+
+Alternative without CDP (Playwright launches Chromium/Chrome directly):
 
 ```json
 "env": {
@@ -77,6 +89,9 @@ providers/perplexity-browser/bin/perplexity-browser-mcp
 | `PERPLEXITY_BROWSER_HEADLESS` | `0` |
 | `PERPLEXITY_BROWSER_BASE_URL` | `https://www.perplexity.ai` |
 | `PERPLEXITY_BROWSER_DEFAULT_TIMEOUT_MS` | `900000` |
+| `PERPLEXITY_BROWSER_CDP_URL` | (empty) — when set, attach over CDP instead of Playwright launch |
+| `PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH` | `1` — launch Chrome like `scripts/chrome-cdp.sh` when CDP connect fails |
+| `PERPLEXITY_BROWSER_CHROME_APP` | OS default Google Chrome path |
 
 ## License
 

@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/xynova/perplexity-browser/internal/config"
-	"github.com/xynova/perplexity-browser/internal/session"
+	"github.com/behaviorengineering/perplexity-browser/internal/config"
+	"github.com/behaviorengineering/perplexity-browser/internal/session"
 )
 
 func main() {

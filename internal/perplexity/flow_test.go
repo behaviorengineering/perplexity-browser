@@ -3,7 +3,7 @@ package perplexity_test
 import (
 	"testing"
 
-	"github.com/xynova/perplexity-browser/internal/perplexity"
+	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
 )
 
 func TestTruncate(t *testing.T) {

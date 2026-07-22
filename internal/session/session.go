@@ -12,8 +12,8 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 
-	"github.com/xynova/perplexity-browser/internal/config"
-	"github.com/xynova/perplexity-browser/internal/result"
+	"github.com/behaviorengineering/perplexity-browser/internal/config"
+	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
 // Manager is the single browser + thread owner for one MCP process.
@@ -118,39 +118,6 @@ func (m *Manager) ensureBrowserLocked(ctx context.Context) error {
 		return m.connectCDPLocked()
 	}
 	return m.launchPersistentLocked()
-}
-
-func (m *Manager) connectCDPLocked() error {
-	b, err := m.pw.Chromium.ConnectOverCDP(m.cfg.CDPURL)
-	if err != nil {
-		return fmt.Errorf("connect over CDP %s: %w (start Chrome with scripts/chrome-cdp.sh first)", m.cfg.CDPURL, err)
-	}
-	m.cdpBrowser = b
-	m.cdpMode = true
-	contexts := b.Contexts()
-	if len(contexts) == 0 {
-		_ = b.Close()
-		m.cdpBrowser = nil
-		m.cdpMode = false
-		return fmt.Errorf("CDP browser has no contexts")
-	}
-	m.browser = contexts[0]
-	pages := m.browser.Pages()
-	if len(pages) > 0 {
-		m.page = pickBestPage(pages)
-	} else {
-		page, err := m.browser.NewPage()
-		if err != nil {
-			_ = b.Close()
-			m.cdpBrowser = nil
-			m.browser = nil
-			m.cdpMode = false
-			return fmt.Errorf("new page over CDP: %w", err)
-		}
-		m.page = page
-	}
-	m.log.Info("connected over CDP", "cdp_url", m.cfg.CDPURL, "pages", len(m.browser.Pages()))
-	return nil
 }
 
 func pickBestPage(pages []playwright.Page) playwright.Page {

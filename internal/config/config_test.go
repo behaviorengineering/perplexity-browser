@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/xynova/perplexity-browser/internal/config"
+	"github.com/behaviorengineering/perplexity-browser/internal/config"
 )
 
 func TestLoadDefaults(t *testing.T) {

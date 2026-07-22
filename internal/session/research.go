@@ -11,8 +11,8 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 
-	"github.com/xynova/perplexity-browser/internal/perplexity"
-	"github.com/xynova/perplexity-browser/internal/result"
+	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
+	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
 // Research starts a new thread, sets mode, submits prompt, waits, extracts answer.

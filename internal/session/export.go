@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/xynova/perplexity-browser/internal/perplexity"
-	"github.com/xynova/perplexity-browser/internal/result"
+	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
+	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
 const exportPreviewChars = 8000

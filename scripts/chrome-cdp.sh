@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Launch Google Chrome with remote debugging so the MCP can ConnectOverCDP.
+# Optional: the MCP auto-launches Chrome with the same flags when CDP connect fails
+# (PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=1, default). Use this script to start Chrome
+# manually or when another process already holds the profile.
 # 1) Quit any Chrome using this profile (including the Playwright-launched one).
 # 2) Run this script.
 # 3) Complete Cloudflare / login in the window until you see normal Perplexity UI.

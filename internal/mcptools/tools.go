@@ -9,8 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/xynova/perplexity-browser/internal/result"
-	"github.com/xynova/perplexity-browser/internal/session"
+	"github.com/behaviorengineering/perplexity-browser/internal/result"
+	"github.com/behaviorengineering/perplexity-browser/internal/session"
 )
 
 // Register attaches v1 tools to the MCP server.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 
-	"github.com/xynova/perplexity-browser/internal/result"
+	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
 // ModeDeep is Perplexity Deep research.

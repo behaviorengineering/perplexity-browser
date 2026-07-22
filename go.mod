@@ -1,4 +1,4 @@
-module github.com/xynova/perplexity-browser
+module github.com/behaviorengineering/perplexity-browser
 
 go 1.24.0
 

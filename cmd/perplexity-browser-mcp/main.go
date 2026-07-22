@@ -9,9 +9,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/xynova/perplexity-browser/internal/config"
-	"github.com/xynova/perplexity-browser/internal/mcptools"
-	"github.com/xynova/perplexity-browser/internal/session"
+	"github.com/behaviorengineering/perplexity-browser/internal/config"
+	"github.com/behaviorengineering/perplexity-browser/internal/mcptools"
+	"github.com/behaviorengineering/perplexity-browser/internal/session"
 )
 
 const version = "0.1.0"
