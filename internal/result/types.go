@@ -10,7 +10,8 @@ const (
 	StatusBusy       = "busy"
 	StatusError      = "error"
 	StatusCancelled  = "cancelled"
-	StatusNotReady   = "not_ready"
+	StatusNotReady      = "not_ready"
+	StatusExportManual  = "export_manual" // UI export failed; human Share/copy required
 )
 
 // Citation is a best-effort link from a Perplexity answer.
@@ -26,6 +27,8 @@ type Base struct {
 	ThreadID string `json:"thread_id,omitempty"`
 	URL      string `json:"url,omitempty"`
 	Busy     bool   `json:"busy"`
+	SessionID       string `json:"session_id,omitempty"`
+	ActiveSessionID string `json:"active_session_id,omitempty"`
 }
 
 // Turn is a research or continue response.
@@ -53,8 +56,9 @@ type Export struct {
 // Session is a perplexity_session response.
 type Session struct {
 	Base
-	LoggedIn    bool   `json:"logged_in"`
-	UserDataDir string `json:"user_data_dir,omitempty"`
-	ExportDir   string `json:"export_dir,omitempty"`
-	BrowserOpen bool   `json:"browser_open"`
+	LoggedIn        bool   `json:"logged_in"`
+	UserDataDir     string `json:"user_data_dir,omitempty"`
+	ExportDir       string `json:"export_dir,omitempty"`
+	SessionsDir     string `json:"sessions_dir,omitempty"`
+	BrowserOpen     bool   `json:"browser_open"`
 }

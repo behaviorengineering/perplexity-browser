@@ -121,7 +121,7 @@ func TryUIExportMarkdown(page playwright.Page, exportDir string) (string, error)
 	}
 	_ = dismissCookieBannerSafe(page)
 
-	share := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)^share$`)})
+	share := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: ShareButtonPattern})
 	n, err := share.Count()
 	if err != nil || n == 0 {
 		return "", fmt.Errorf("share control not found")
@@ -130,15 +130,8 @@ func TryUIExportMarkdown(page playwright.Page, exportDir string) (string, error)
 	if err := share.First().Click(force); err != nil {
 		return "", err
 	}
-	time.Sleep(500 * time.Millisecond)
 
-	for _, label := range []string{
-		`(?i)export.*markdown`,
-		`(?i)copy as markdown`,
-		`(?i)download.*markdown`,
-		`(?i)^markdown$`,
-		`(?i)export`,
-	} {
+	for _, label := range ExportMenuPatterns {
 		opt := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(label)})
 		cn, _ := opt.Count()
 		if cn == 0 {
@@ -148,16 +141,33 @@ func TryUIExportMarkdown(page playwright.Page, exportDir string) (string, error)
 		if cn == 0 {
 			continue
 		}
+		if err := waitLocatorVisible(opt, 3_000); err != nil {
+			continue
+		}
 		if err := opt.First().Click(force); err != nil {
 			continue
 		}
-		time.Sleep(800 * time.Millisecond)
-		// Prefer a newly written .md under exportDir.
-		if p := newestMarkdown(exportDir); p != "" {
+		if p := waitForNewestMarkdown(exportDir, 4*time.Second); p != "" {
 			return p, nil
 		}
 	}
 	return "", fmt.Errorf("markdown export UI path not completed")
+}
+
+func waitForNewestMarkdown(dir string, timeout time.Duration) string {
+	if timeout <= 0 {
+		return newestMarkdown(dir)
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if p := newestMarkdown(dir); p != "" {
+			return p
+		}
+		if time.Now().After(deadline) {
+			return ""
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
 }
 
 func newestMarkdown(dir string) string {

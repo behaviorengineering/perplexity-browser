@@ -2,11 +2,9 @@
 package perplexity
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/mxschmitt/playwright-go"
 
@@ -42,7 +40,7 @@ func GotoHome(page playwright.Page, baseURL string) error {
 	}); err != nil {
 		return fmt.Errorf("goto home: %w", err)
 	}
-	time.Sleep(1200 * time.Millisecond)
+	WaitAfterHome(page)
 	return nil
 }
 
@@ -52,14 +50,14 @@ func EnsureCompose(page playwright.Page) error {
 		return fmt.Errorf("no page")
 	}
 	// Prefer explicit New Thread / New controls when present.
-	for _, label := range []string{"New Thread", "New thread", "New"} {
+	for _, label := range NewThreadButtonNames {
 		loc := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: label})
 		n, err := loc.Count()
 		if err == nil && n > 0 {
 			vis, _ := loc.First().IsVisible()
 			if vis {
 				if err := loc.First().Click(); err == nil {
-					time.Sleep(800 * time.Millisecond)
+					_ = waitComposeReady(page, 5_000)
 					break
 				}
 			}
@@ -74,12 +72,7 @@ func EnsureCompose(page playwright.Page) error {
 }
 
 func composeBox(page playwright.Page) (playwright.Locator, error) {
-	candidates := []string{
-		`div[contenteditable="true"]`,
-		`[role="textbox"]`,
-		`textarea`,
-	}
-	for _, sel := range candidates {
+	for _, sel := range ComposeBoxSelectors {
 		loc := page.Locator(sel)
 		n, err := loc.Count()
 		if err != nil || n == 0 {
@@ -119,7 +112,7 @@ func SetMode(page playwright.Page, mode string) error {
 
 	// Open mode menu via the Search / Research control near compose.
 	opened := false
-	for _, name := range []string{"Search", "Deep research", "Research"} {
+	for _, name := range ModeOpenButtonNames {
 		btn := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: name, Exact: playwright.Bool(true)})
 		n, err := btn.Count()
 		if err != nil || n == 0 {
@@ -131,7 +124,7 @@ func SetMode(page playwright.Page, mode string) error {
 		}
 		if err := btn.First().Click(force); err == nil {
 			opened = true
-			time.Sleep(400 * time.Millisecond)
+			_ = waitComposeReady(page, 3_000)
 			break
 		}
 	}
@@ -143,10 +136,10 @@ func SetMode(page playwright.Page, mode string) error {
 	}
 
 	if mode == ModeDeep {
-		deep := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)deep\s*research`)})
+		deep := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: DeepResearchMenuPattern})
 		n, _ := deep.Count()
 		if n == 0 {
-			deep = page.GetByText(regexp.MustCompile(`(?i)deep\s*research`))
+			deep = page.GetByText(DeepResearchMenuPattern)
 			n, _ = deep.Count()
 		}
 		if n == 0 {
@@ -155,29 +148,28 @@ func SetMode(page playwright.Page, mode string) error {
 		if err := deep.First().Click(force); err != nil {
 			return &ErrUIChanged{Op: "mode_click", Msg: err.Error()}
 		}
-		time.Sleep(400 * time.Millisecond)
+		_ = waitComposeReady(page, 3_000)
 		return nil
 	}
 
 	// Search option inside the opened menu.
-	searchItem := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)^search$`)})
+	searchItem := page.GetByRole("menuitem", playwright.PageGetByRoleOptions{Name: SearchMenuPattern})
 	n, _ := searchItem.Count()
 	if n > 0 {
 		_ = searchItem.First().Click(force)
 	}
-	time.Sleep(300 * time.Millisecond)
+	_ = waitComposeReady(page, 3_000)
 	return nil
 }
 
 func dismissCookieBanner(page playwright.Page) {
-	for _, label := range []string{"Accept", "Accept all", "I agree", "Got it", "OK"} {
+	for _, label := range CookieDismissButtonNames {
 		btn := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile("(?i)^" + regexp.QuoteMeta(label) + "$")})
 		n, err := btn.Count()
 		if err != nil || n == 0 {
 			continue
 		}
 		_ = btn.First().Click(playwright.LocatorClickOptions{Force: playwright.Bool(true), Timeout: playwright.Float(2_000)})
-		time.Sleep(200 * time.Millisecond)
 		return
 	}
 }
@@ -192,21 +184,26 @@ func SubmitPrompt(page playwright.Page, prompt string) error {
 		return fmt.Errorf("focus compose: %w", err)
 	}
 	if err := box.Fill(""); err != nil {
-		// contenteditable may not support Fill; fall through to type.
 		_ = err
 	}
-	if err := box.PressSequentially(prompt, playwright.LocatorPressSequentiallyOptions{
-		Delay: playwright.Float(2),
-	}); err != nil {
-		// Fallback: fill/type
-		if err2 := box.Fill(prompt); err2 != nil {
-			return fmt.Errorf("type prompt: %w (fill: %v)", err, err2)
+	typed := false
+	if len(prompt) > 120 {
+		if err := box.Fill(prompt); err == nil {
+			typed = true
 		}
 	}
-	time.Sleep(200 * time.Millisecond)
+	if !typed {
+		if err := box.PressSequentially(prompt, playwright.LocatorPressSequentiallyOptions{
+			Delay: playwright.Float(1),
+		}); err != nil {
+			if err2 := box.Fill(prompt); err2 != nil {
+				return fmt.Errorf("type prompt: %w (fill: %v)", err, err2)
+			}
+		}
+	}
 	if err := box.Press("Enter"); err != nil {
 		// Try submit button
-		submit := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: regexp.MustCompile(`(?i)(submit|send|ask)`)})
+		submit := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: SubmitButtonPattern})
 		n, _ := submit.Count()
 		if n == 0 {
 			return fmt.Errorf("submit: %w", err)
@@ -218,104 +215,14 @@ func SubmitPrompt(page playwright.Page, prompt string) error {
 	return nil
 }
 
-// WaitComplete polls until generation finishes or ctx/timeout ends.
-func WaitComplete(ctx context.Context, page playwright.Page, pollMS, timeoutMS int) error {
-	if pollMS <= 0 {
-		pollMS = 2000
-	}
-	if timeoutMS <= 0 {
-		timeoutMS = 900_000
-	}
-	deadline := time.Now().Add(time.Duration(timeoutMS) * time.Millisecond)
-	stable := 0
-	var lastLen int
-
-	for {
-		select {
-		case <-ctx.Done():
-			return context.Canceled
-		default:
-		}
-		if time.Now().After(deadline) {
-			return context.DeadlineExceeded
-		}
-
-		generating, err := isGenerating(page)
-		if err != nil {
-			return err
-		}
-		ans, _ := ExtractAnswerText(page)
-		cur := len(ans)
-
-		if generating {
-			stable = 0
-			lastLen = cur
-		} else {
-			if cur > 0 && cur == lastLen {
-				stable++
-			} else {
-				stable = 0
-				lastLen = cur
-			}
-			if stable >= 2 {
-				return nil
-			}
-		}
-		time.Sleep(time.Duration(pollMS) * time.Millisecond)
-	}
-}
-
-func isGenerating(page playwright.Page) (bool, error) {
-	// Stop / Cancel generation button visible.
-	btns := page.GetByRole("button")
-	n, err := btns.Count()
-	if err != nil {
-		return false, err
-	}
-	limit := n
-	if limit > 40 {
-		limit = 40
-	}
-	for i := 0; i < limit; i++ {
-		btn := btns.Nth(i)
-		vis, _ := btn.IsVisible()
-		if !vis {
-			continue
-		}
-		name, _ := btn.GetAttribute("aria-label")
-		text, _ := btn.InnerText()
-		blob := name + " " + text
-		if stopLabel.MatchString(blob) && !strings.Contains(strings.ToLower(blob), "account") {
-			return true, nil
-		}
-	}
-	// Progress text.
-	prog := page.GetByText(regexp.MustCompile(`(?i)(researching|thinking|searching|generating)`))
-	pn, _ := prog.Count()
-	if pn > 0 {
-		vis, _ := prog.First().IsVisible()
-		if vis {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 // ExtractAnswerText returns best-effort latest assistant prose.
 func ExtractAnswerText(page playwright.Page) (string, error) {
 	if page == nil {
 		return "", fmt.Errorf("no page")
 	}
 	// Prefer main article / prose regions.
-	sels := []string{
-		`[data-testid="answer"]`,
-		`main article`,
-		`main .prose`,
-		`[class*="answer"]`,
-		`main`,
-	}
 	var best string
-	for _, sel := range sels {
+	for _, sel := range AnswerTextSelectors {
 		loc := page.Locator(sel)
 		n, err := loc.Count()
 		if err != nil || n == 0 {
@@ -336,7 +243,7 @@ func ExtractAnswerText(page playwright.Page) (string, error) {
 // ExtractCitations collects link-looking citations from the page.
 func ExtractCitations(page playwright.Page) []result.Citation {
 	var out []result.Citation
-	links := page.Locator(`main a[href^="http"]`)
+	links := page.Locator(CitationLinkSelector)
 	n, err := links.Count()
 	if err != nil || n == 0 {
 		return out

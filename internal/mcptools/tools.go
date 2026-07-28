@@ -37,7 +37,7 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "perplexity_export",
-		Description: "Export the full conversation to a markdown file for analysis (UI export when available, otherwise page scrape).",
+		Description: "Export the full conversation via Perplexity Share UI (markdown file). Returns export_manual if UI export fails so the human can Share/copy manually.",
 	}, h.export)
 }
 
@@ -48,6 +48,7 @@ type handlers struct {
 
 type sessionIn struct {
 	Action    string `json:"action" jsonschema:"status, wait_for_login, close, or cancel"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"timeout for wait_for_login in milliseconds"`
 }
 
@@ -55,19 +56,22 @@ type researchIn struct {
 	Prompt    string `json:"prompt" jsonschema:"full prepared prompt text"`
 	Mode      string `json:"mode,omitempty" jsonschema:"deep or search; default deep"`
 	TitleHint string `json:"title_hint,omitempty" jsonschema:"optional thread title hint without case PII"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"override wait timeout in milliseconds"`
 }
 
 type continueIn struct {
 	Message   string `json:"message" jsonschema:"follow-up message"`
-	ThreadID  string `json:"thread_id,omitempty" jsonschema:"optional thread id; defaults to active"`
+	ThreadID  string `json:"thread_id,omitempty" jsonschema:"optional thread id; defaults to active for session"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 }
 
 type exportIn struct {
-	ThreadID string `json:"thread_id,omitempty"`
-	Format   string `json:"format,omitempty" jsonschema:"markdown or text"`
-	SaveDir  string `json:"save_dir,omitempty"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
+	Format    string `json:"format,omitempty" jsonschema:"markdown or text"`
+	SaveDir   string `json:"save_dir,omitempty"`
 }
 
 func jsonResult(v any) (*mcp.CallToolResult, any, error) {
@@ -83,14 +87,15 @@ func jsonResult(v any) (*mcp.CallToolResult, any, error) {
 	}, v, nil
 }
 
-func (h *handlers) session(ctx context.Context, _ *mcp.CallToolRequest, in sessionIn) (*mcp.CallToolResult, any, error) {
+func (h *handlers) session(ctx context.Context, req *mcp.CallToolRequest, in sessionIn) (*mcp.CallToolResult, any, error) {
 	action := in.Action
 	if action == "" {
 		action = "status"
 	}
+	scope := h.mgr.ResolveSessionScope(ctx, in.SessionID, req.Session)
 	switch action {
 	case "status":
-		s := h.mgr.Status(ctx, true)
+		s := h.mgr.Status(ctx, true, scope)
 		return jsonResult(s)
 	case "wait_for_login":
 		if !h.mgr.TryBegin() {
@@ -99,7 +104,7 @@ func (h *handlers) session(ctx context.Context, _ *mcp.CallToolRequest, in sessi
 			})
 		}
 		defer h.mgr.End()
-		s := h.mgr.WaitForLogin(ctx, in.TimeoutMS)
+		s := h.mgr.WaitForLogin(ctx, in.TimeoutMS, scope)
 		return jsonResult(s)
 	case "cancel":
 		h.mgr.Cancel()
@@ -128,7 +133,7 @@ func (h *handlers) session(ctx context.Context, _ *mcp.CallToolRequest, in sessi
 	}
 }
 
-func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, in researchIn) (*mcp.CallToolResult, any, error) {
+func (h *handlers) research(ctx context.Context, req *mcp.CallToolRequest, in researchIn) (*mcp.CallToolResult, any, error) {
 	if strings.TrimSpace(in.Prompt) == "" {
 		return jsonResult(result.Turn{
 			Base: result.Base{Status: result.StatusError, Message: "prompt is required"},
@@ -140,11 +145,11 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, in rese
 		})
 	}
 	defer h.mgr.End()
-	_ = in.TitleHint
-	return jsonResult(h.mgr.Research(ctx, in.Prompt, in.Mode, in.TimeoutMS))
+	scope := h.mgr.ResolveSessionScope(ctx, in.SessionID, req.Session)
+	return jsonResult(h.mgr.Research(ctx, in.Prompt, in.Mode, in.TitleHint, scope, in.TimeoutMS))
 }
 
-func (h *handlers) continueTurn(ctx context.Context, _ *mcp.CallToolRequest, in continueIn) (*mcp.CallToolResult, any, error) {
+func (h *handlers) continueTurn(ctx context.Context, req *mcp.CallToolRequest, in continueIn) (*mcp.CallToolResult, any, error) {
 	if strings.TrimSpace(in.Message) == "" {
 		return jsonResult(result.Turn{
 			Base: result.Base{Status: result.StatusError, Message: "message is required"},
@@ -156,17 +161,19 @@ func (h *handlers) continueTurn(ctx context.Context, _ *mcp.CallToolRequest, in 
 		})
 	}
 	defer h.mgr.End()
-	return jsonResult(h.mgr.Continue(ctx, in.Message, in.ThreadID, in.TimeoutMS))
+	scope := h.mgr.ResolveSessionScope(ctx, in.SessionID, req.Session)
+	return jsonResult(h.mgr.Continue(ctx, in.Message, in.ThreadID, scope, in.TimeoutMS))
 }
 
-func (h *handlers) export(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, any, error) {
+func (h *handlers) export(ctx context.Context, req *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, any, error) {
 	if !h.mgr.TryBegin() {
 		return jsonResult(result.Export{
 			Base: result.Base{Status: result.StatusBusy, Message: "another tool is running", Busy: true},
 		})
 	}
 	defer h.mgr.End()
-	return jsonResult(h.mgr.Export(ctx, in.ThreadID, in.Format, in.SaveDir))
+	scope := h.mgr.ResolveSessionScope(ctx, in.SessionID, req.Session)
+	return jsonResult(h.mgr.Export(ctx, in.ThreadID, in.Format, in.SaveDir, scope))
 }
 
 func firstNonEmpty(a, b string) string {

@@ -13,6 +13,7 @@ import (
 	"github.com/mxschmitt/playwright-go"
 
 	"github.com/behaviorengineering/perplexity-browser/internal/config"
+	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
 	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
@@ -33,6 +34,9 @@ type Manager struct {
 
 	threadID string
 	mode     string
+
+	defaultSessionID string
+	activeSessionID  string
 }
 
 // New creates a Manager (browser not started until EnsureBrowser).
@@ -40,7 +44,7 @@ func New(cfg config.Config, log *slog.Logger) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Manager{cfg: cfg, log: log}
+	return &Manager{cfg: cfg, log: log, defaultSessionID: sanitizeSessionID(cfg.SessionID)}
 }
 
 // Config returns a copy of runtime config.
@@ -188,11 +192,16 @@ func (m *Manager) launchPersistentLocked() error {
 	return nil
 }
 
+func (m *Manager) pageURLLocked() string {
+	if m.page == nil {
+		return ""
+	}
+	return m.page.URL()
+}
+
 // dropContextLocked drops Playwright handles. In CDP mode it disconnects only;
 // Chrome itself is left running. Persistent profile cookies stay on disk.
 func (m *Manager) dropContextLocked() {
-	m.threadID = ""
-	m.mode = ""
 	if m.cdpMode {
 		if m.cdpBrowser != nil {
 			_ = m.cdpBrowser.Close() // disconnect from CDP
@@ -264,20 +273,28 @@ func (m *Manager) CloseBrowser() error {
 }
 
 // Status returns session JSON fields without requiring the write lock long.
-func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
+func (m *Manager) Status(ctx context.Context, openBrowser bool, sessionID string) result.Session {
+	sessionID = m.resolveSessionID(sessionID)
+	st := m.ensureThreadFromState(sessionID)
 	out := result.Session{
 		Base: result.Base{
-			Status: result.StatusOK,
-			Busy:   m.IsBusy(),
+			Status:          result.StatusOK,
+			Busy:            m.IsBusy(),
+			SessionID:       sessionID,
+			ActiveSessionID: m.activeSession(),
 		},
 		UserDataDir: m.cfg.UserDataDir,
 		ExportDir:   m.cfg.ExportDir,
+		SessionsDir: m.sessionsDir(),
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	out.ThreadID = m.threadID
+	out.ThreadID = st.ThreadID
+	if st.URL != "" {
+		out.URL = st.URL
+	}
 	if m.page != nil {
 		if !m.pageAliveLocked() {
 			m.log.Info("status: dead page; will relaunch persistent profile")
@@ -286,6 +303,15 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 			if m.cdpMode && m.browser != nil {
 				if best := pickBestPage(m.browser.Pages()); best != nil {
 					m.page = best
+				}
+			}
+			if m.cdpMode && needsPerplexityHome(m.pageURLLocked()) {
+				if err := m.gotoHomeLocked(ctx); err != nil {
+					out.Status = result.StatusError
+					out.Message = err.Error()
+					out.BrowserOpen = m.page != nil
+					out.URL = m.pageURLLocked()
+					return out
 				}
 			}
 			out.BrowserOpen = true
@@ -306,7 +332,7 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 					if botWall(m.page) {
 						out.Message = "bot / security verification page detected; complete it in Chrome (CDP), then retry status"
 					} else if m.cfg.CDPURL != "" {
-						out.Message = "not logged in on the CDP Chrome tab; sign in there, open perplexity.ai home, then retry status"
+						out.Message = "not logged in on the CDP Chrome tab; sign in there, then retry status or wait_for_login"
 					} else {
 						out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
 					}
@@ -327,8 +353,10 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 		out.Message = err.Error()
 		return out
 	}
-	// CDP: do not force navigation (avoids fresh bot challenges). Use the open tab.
-	if m.cfg.CDPURL == "" {
+	// Non-CDP: always land on home. CDP: only navigate when the tab is blank /
+	// off-site (Chrome session restore often ignores the startup URL). Leave an
+	// already-open Perplexity tab alone to avoid extra Cloudflare hits.
+	if m.cfg.CDPURL == "" || needsPerplexityHome(m.pageURLLocked()) {
 		if err := m.gotoHomeLocked(ctx); err != nil {
 			if isTargetClosed(err) {
 				m.dropContextLocked()
@@ -363,7 +391,7 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 			if botWall(m.page) {
 				out.Message = "bot / security verification page detected; complete it in Chrome (CDP), then retry status"
 			} else if m.cfg.CDPURL != "" {
-				out.Message = "not logged in on the CDP Chrome tab; sign in there, open perplexity.ai home, then retry status"
+				out.Message = "not logged in on the CDP Chrome tab; sign in there, then retry status or wait_for_login"
 			} else {
 				out.Message = "sign in in the headed browser window, then call wait_for_login or retry"
 			}
@@ -373,7 +401,7 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool) result.Session {
 }
 
 // WaitForLogin polls until logged in or timeout.
-func (m *Manager) WaitForLogin(ctx context.Context, timeoutMS int) result.Session {
+func (m *Manager) WaitForLogin(ctx context.Context, timeoutMS int, sessionID string) result.Session {
 	if timeoutMS <= 0 {
 		timeoutMS = 600_000
 	}
@@ -387,19 +415,19 @@ func (m *Manager) WaitForLogin(ctx context.Context, timeoutMS int) result.Sessio
 	for {
 		select {
 		case <-ctx.Done():
-			s := m.Status(context.Background(), true)
+			s := m.Status(context.Background(), true, sessionID)
 			s.Status = result.StatusCancelled
 			s.Message = "wait_for_login cancelled"
 			return s
 		case <-runCtx.Done():
-			s := m.Status(context.Background(), true)
+			s := m.Status(context.Background(), true, sessionID)
 			s.Status = result.StatusCancelled
 			s.Message = "wait_for_login cancelled"
 			return s
 		default:
 		}
 
-		s := m.Status(ctx, true)
+		s := m.Status(ctx, true, sessionID)
 		if s.LoggedIn && s.Status == result.StatusOK {
 			s.Message = "logged in"
 			return s
@@ -434,9 +462,18 @@ func (m *Manager) gotoHomeLocked(ctx context.Context) error {
 	}); err != nil {
 		return fmt.Errorf("goto %s: %w", m.cfg.BaseURL, err)
 	}
-	// Give client hydration a moment for login UI.
-	time.Sleep(1500 * time.Millisecond)
+	perplexity.WaitAfterHome(m.page)
 	return nil
+}
+
+// needsPerplexityHome reports whether the active tab is blank or off perplexity.ai
+// (Chrome with a reused profile often restores about:blank and ignores the launch URL).
+func needsPerplexityHome(pageURL string) bool {
+	u := strings.ToLower(strings.TrimSpace(pageURL))
+	if u == "" || u == "about:blank" || strings.HasPrefix(u, "chrome://") || strings.HasPrefix(u, "chrome-error://") {
+		return true
+	}
+	return !strings.Contains(u, "perplexity.ai")
 }
 
 // SetThread records the active thread metadata.

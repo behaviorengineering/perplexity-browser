@@ -12,11 +12,16 @@ import (
 type Config struct {
 	UserDataDir      string
 	ExportDir        string
+	SessionID        string
+	SessionsDir      string
+	StatePath        string // legacy single-file state (migrated into sessions/default.json)
 	BaseURL          string
 	Headless         bool
 	DefaultTimeoutMS int
 	SearchTimeoutMS  int
 	PollMS           int
+	PollFastMS       int
+	StablePolls      int
 	AnswerMaxChars   int
 	Channel          string
 	CDPURL           string
@@ -33,11 +38,16 @@ func Load() Config {
 	return Config{
 		UserDataDir:      envOr("PERPLEXITY_BROWSER_USER_DATA_DIR", filepath.Join(root, "profile")),
 		ExportDir:        envOr("PERPLEXITY_BROWSER_EXPORT_DIR", filepath.Join(root, "exports")),
+		StatePath:        envOr("PERPLEXITY_BROWSER_STATE_PATH", filepath.Join(root, "state.json")),
+		SessionID:        sanitizeSessionIDEnv(envOr("PERPLEXITY_BROWSER_SESSION_ID", "default")),
+		SessionsDir:      envOr("PERPLEXITY_BROWSER_SESSIONS_DIR", filepath.Join(root, "sessions")),
 		BaseURL:          envOr("PERPLEXITY_BROWSER_BASE_URL", "https://www.perplexity.ai"),
 		Headless:         envBool("PERPLEXITY_BROWSER_HEADLESS", false),
 		DefaultTimeoutMS: envInt("PERPLEXITY_BROWSER_DEFAULT_TIMEOUT_MS", 900_000),
 		SearchTimeoutMS:  envInt("PERPLEXITY_BROWSER_SEARCH_TIMEOUT_MS", 180_000),
-		PollMS:           envInt("PERPLEXITY_BROWSER_POLL_MS", 2_000),
+		PollMS:           envInt("PERPLEXITY_BROWSER_POLL_MS", 800),
+		PollFastMS:       envInt("PERPLEXITY_BROWSER_POLL_FAST_MS", 350),
+		StablePolls:      envInt("PERPLEXITY_BROWSER_STABLE_POLLS", 2),
 		AnswerMaxChars:   envInt("PERPLEXITY_BROWSER_ANSWER_MAX_CHARS", 120_000),
 		Channel:          strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CHANNEL")),
 		CDPURL:           strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_CDP_URL")),
@@ -79,4 +89,27 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func sanitizeSessionIDEnv(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "default"
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	out := strings.Trim(b.String(), "._-")
+	if out == "" {
+		return "default"
+	}
+	if len(out) > 64 {
+		out = out[:64]
+	}
+	return out
 }

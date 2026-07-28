@@ -15,11 +15,23 @@ import (
 	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
+func (m *Manager) stampSession(out *result.Base, sessionID string) {
+	if out == nil {
+		return
+	}
+	out.SessionID = sessionID
+	out.ActiveSessionID = m.activeSession()
+}
+
 // Research starts a new thread, sets mode, submits prompt, waits, extracts answer.
 // Caller must already hold TryBegin / End around this call.
-func (m *Manager) Research(ctx context.Context, prompt, mode string, timeoutMS int) result.Turn {
+func (m *Manager) Research(ctx context.Context, prompt, mode, titleHint, sessionID string, timeoutMS int) result.Turn {
+	sessionID = m.resolveSessionID(sessionID)
+	m.setActiveSession(sessionID)
+
 	start := time.Now()
 	out := result.Turn{Base: result.Base{Busy: true}}
+	m.stampSession(&out.Base, sessionID)
 
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
@@ -39,44 +51,56 @@ func (m *Manager) Research(ctx context.Context, prompt, mode string, timeoutMS i
 		status.Mode = mode
 		status.ElapsedMS = time.Since(start).Milliseconds()
 		status.Busy = false
+		m.stampSession(&status.Base, sessionID)
 		return *status
 	}
 
 	if err := perplexity.EnsureCompose(page); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID)
 	}
 	if err := perplexity.SetMode(page, mode); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID)
 	}
 	if err := perplexity.SubmitPrompt(page, prompt); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID)
 	}
 
 	threadID := newThreadID()
 	m.mu.Lock()
 	m.threadID = threadID
 	m.mode = mode
+	m.activeSessionID = sessionID
 	runCtx := m.runCtx
 	m.mu.Unlock()
 
 	waitCtx, stopWait := mergeCancel(ctx, runCtx)
 	defer stopWait()
-	if err := perplexity.WaitComplete(waitCtx, page, m.cfg.PollMS, timeoutMS); err != nil {
-		return m.finishTurn(out, page, threadID, mode, start, err)
+	if err := perplexity.WaitComplete(waitCtx, page, m.waitSettings(timeoutMS)); err != nil {
+		return m.finishTurn(out, page, sessionID, threadID, mode, start, err, titleHint)
 	}
-	return m.finishTurn(out, page, threadID, mode, start, nil)
+	return m.finishTurn(out, page, sessionID, threadID, mode, start, nil, titleHint)
 }
 
 // Continue sends a follow-up on the active thread and waits for the next answer.
 // Caller must already hold TryBegin / End.
-func (m *Manager) Continue(ctx context.Context, message, threadID string, timeoutMS int) result.Turn {
+func (m *Manager) Continue(ctx context.Context, message, threadID, sessionID string, timeoutMS int) result.Turn {
+	sessionID = m.resolveSessionID(sessionID)
 	start := time.Now()
 	out := result.Turn{Base: result.Base{Busy: true}}
+	m.stampSession(&out.Base, sessionID)
 
 	message = strings.TrimSpace(message)
 	if message == "" {
 		out.Status = result.StatusError
 		out.Message = "message is required"
+		out.Busy = false
+		return out
+	}
+
+	st, err := m.activateSession(ctx, sessionID)
+	if err != nil {
+		out.Status = result.StatusError
+		out.Message = err.Error()
 		out.Busy = false
 		return out
 	}
@@ -88,6 +112,19 @@ func (m *Manager) Continue(ctx context.Context, message, threadID string, timeou
 	runCtx := m.runCtx
 	m.mu.Unlock()
 
+	if threadID != "" && active != "" && threadID != active {
+		out.Status = result.StatusError
+		out.Message = fmt.Sprintf("thread_id mismatch: session %q has %s, requested %s", sessionID, active, threadID)
+		out.Busy = false
+		return out
+	}
+	if threadID != "" && st.ThreadID != "" && threadID != st.ThreadID {
+		out.Status = result.StatusError
+		out.Message = fmt.Sprintf("thread_id does not belong to session %q", sessionID)
+		out.Busy = false
+		return out
+	}
+
 	if page == nil {
 		out.Status = result.StatusError
 		out.Message = "browser not open; call perplexity_research first"
@@ -96,13 +133,7 @@ func (m *Manager) Continue(ctx context.Context, message, threadID string, timeou
 	}
 	if active == "" {
 		out.Status = result.StatusError
-		out.Message = "no active thread; call perplexity_research first"
-		out.Busy = false
-		return out
-	}
-	if threadID != "" && threadID != active {
-		out.Status = result.StatusError
-		out.Message = fmt.Sprintf("thread_id mismatch: active %s, requested %s", active, threadID)
+		out.Message = fmt.Sprintf("no active thread for session %q; call perplexity_research first", sessionID)
 		out.Busy = false
 		return out
 	}
@@ -112,14 +143,14 @@ func (m *Manager) Continue(ctx context.Context, message, threadID string, timeou
 	timeoutMS = m.resolveTimeout(mode, timeoutMS)
 
 	if err := perplexity.SubmitPrompt(page, message); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID)
 	}
 	waitCtx, stopWait := mergeCancel(ctx, runCtx)
 	defer stopWait()
-	if err := perplexity.WaitComplete(waitCtx, page, m.cfg.PollMS, timeoutMS); err != nil {
-		return m.finishTurn(out, page, active, mode, start, err)
+	if err := perplexity.WaitComplete(waitCtx, page, m.waitSettings(timeoutMS)); err != nil {
+		return m.finishTurn(out, page, sessionID, active, mode, start, err, "")
 	}
-	return m.finishTurn(out, page, active, mode, start, nil)
+	return m.finishTurn(out, page, sessionID, active, mode, start, nil, "")
 }
 
 func (m *Manager) preparePage(ctx context.Context) (playwright.Page, *result.Turn) {
@@ -159,7 +190,16 @@ func (m *Manager) resolveTimeout(mode string, timeoutMS int) int {
 	return timeoutMS
 }
 
-func (m *Manager) finishTurn(out result.Turn, page playwright.Page, threadID, mode string, start time.Time, waitErr error) result.Turn {
+func (m *Manager) waitSettings(timeoutMS int) perplexity.WaitSettings {
+	return perplexity.WaitSettings{
+		IdlePollMS:  m.cfg.PollMS,
+		FastPollMS:  m.cfg.PollFastMS,
+		StablePolls: m.cfg.StablePolls,
+		TimeoutMS:   timeoutMS,
+	}
+}
+
+func (m *Manager) finishTurn(out result.Turn, page playwright.Page, sessionID, threadID, mode string, start time.Time, waitErr error, titleHint string) result.Turn {
 	ans, _ := perplexity.ExtractAnswerText(page)
 	ans, trunc := perplexity.Truncate(ans, m.cfg.AnswerMaxChars)
 	out.ThreadID = threadID
@@ -170,25 +210,37 @@ func (m *Manager) finishTurn(out result.Turn, page playwright.Page, threadID, mo
 	out.Citations = perplexity.ExtractCitations(page)
 	out.ElapsedMS = time.Since(start).Milliseconds()
 	out.Busy = false
-	if waitErr == nil {
+	m.stampSession(&out.Base, sessionID)
+	switch {
+	case waitErr == nil:
 		out.Status = result.StatusOK
 		out.Message = "ok"
-		return out
-	}
-	if errors.Is(waitErr, context.Canceled) {
+	case errors.Is(waitErr, context.Canceled):
 		out.Status = result.StatusCancelled
 		out.Message = "cancelled"
-		return out
-	}
-	if errors.Is(waitErr, context.DeadlineExceeded) {
+	case errors.Is(waitErr, context.DeadlineExceeded):
 		out.Status = result.StatusTimeout
 		out.Message = "timed out; partial answer returned if any"
-		return out
+	default:
+		return m.mapFlowErr(out, waitErr, mode, start, page, sessionID)
 	}
-	return m.mapFlowErr(out, waitErr, mode, start, page)
+	m.persistTurn(page, sessionID, threadID, mode, titleHint, waitErr)
+	return out
 }
 
-func (m *Manager) mapFlowErr(out result.Turn, err error, mode string, start time.Time, page playwright.Page) result.Turn {
+func (m *Manager) persistTurn(page playwright.Page, sessionID, threadID, mode, titleHint string, waitErr error) {
+	if page == nil || threadID == "" {
+		return
+	}
+	hint := ""
+	if waitErr == nil {
+		_ = perplexity.ApplyTitleHint(page, titleHint)
+		hint = titleHint
+	}
+	m.saveThreadState(sessionID, threadID, mode, page.URL(), hint)
+}
+
+func (m *Manager) mapFlowErr(out result.Turn, err error, mode string, start time.Time, page playwright.Page, sessionID string) result.Turn {
 	out.Mode = mode
 	out.ElapsedMS = time.Since(start).Milliseconds()
 	out.Busy = false
@@ -198,6 +250,7 @@ func (m *Manager) mapFlowErr(out result.Turn, err error, mode string, start time
 	m.mu.Lock()
 	out.ThreadID = m.threadID
 	m.mu.Unlock()
+	m.stampSession(&out.Base, sessionID)
 	var ui *perplexity.ErrUIChanged
 	if errors.As(err, &ui) {
 		out.Status = result.StatusUIChanged
