@@ -147,9 +147,10 @@ Optional: one line in consumer `README.md` pointing at `docs/perplexity/workflow
 2. Fill the **smallest** pack from real repo files
 3. Show the **full prepared prompt** to the human before submit
 4. `perplexity_research` with entire `prompt`, correct `mode`, `title_hint` without secrets
-5. `perplexity_export` `format=markdown`
-6. If `export_manual`: stop; share thread `url`; do not retry export in a loop
-7. Summarize export path vs export sink
+5. `perplexity_export` `format=markdown` (⋯ → Export as Markdown via ExpectDownload+SaveAs; scrape fallback)
+6. If `method=scrape`: note that Deep Research full report may still need a manual Download
+7. If `status` is `export_manual`: stop; share thread URL; do not retry export in a loop
+8. Summarize export path vs export sink
 
 **Must not** use `perplexity_continue` for the first submit. **Must** use one full `perplexity_research` prompt.
 
@@ -176,6 +177,7 @@ Core MCP sequence (all clients):
 ```text
 perplexity_session     action=status
 perplexity_research    prompt=<full pack>  mode=deep|search  title_hint=<no secrets>
+# mode=deep: compose / → Deep Research (+ Use); mode=search: default Search compose
 perplexity_continue    message=...         # optional follow-ups only
 perplexity_export      format=markdown
 ```

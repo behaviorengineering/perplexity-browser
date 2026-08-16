@@ -66,6 +66,8 @@ perplexity_research
 
 Submit the **whole** pack in one `prompt`. Do not drip-feed the first submit through `perplexity_continue`.
 
+`mode=deep` (default for thorough research): MCP focuses compose, types `/` to open the modality command menu, chooses **Deep Research**, clicks **Use** if shown. `mode=search` leaves default Search.
+
 ### 4. Follow-up (optional)
 
 ```text
@@ -82,7 +84,7 @@ perplexity_export  format=markdown  save_dir=<optional>
 
 Default export dir: `PERPLEXITY_BROWSER_EXPORT_DIR` (often `~/.perplexity-browser-mcp/exports`).
 
-If status is `export_manual`: share thread URL; one automated export attempt only.
+If status is `export_manual`: use ⋯ → Export as Markdown; share thread URL; one automated export attempt only.
 
 ### 6. After import
 

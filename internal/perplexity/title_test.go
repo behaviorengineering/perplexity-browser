@@ -1,6 +1,7 @@
 package perplexity_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
@@ -25,5 +26,11 @@ func TestSelectorRegistryNonEmpty(t *testing.T) {
 	}
 	if perplexity.ShareButtonPattern == nil || perplexity.DeepResearchMenuPattern == nil {
 		t.Fatal("compiled patterns missing")
+	}
+	if len(perplexity.MoreOptionsNamePatterns) == 0 || len(perplexity.MoreOptionsAriaSelectors) == 0 {
+		t.Fatal("more-options (⋯) patterns missing")
+	}
+	if len(perplexity.ExportMenuPatterns) == 0 || !strings.Contains(perplexity.ExportMenuPatterns[0], "markdown") {
+		t.Fatal("Export as Markdown must be first export menu pattern")
 	}
 }

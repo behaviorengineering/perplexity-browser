@@ -109,8 +109,12 @@ func launchChromeForCDP(cfg config.Config, log interface {
 		"--no-first-run",
 		"--no-default-browser-check",
 		"--disable-features=Translate",
-		cfg.BaseURL,
 	}
+	startURL := strings.TrimSpace(cfg.WarmupURL)
+	if startURL == "" {
+		startURL = cfg.BaseURL
+	}
+	args = append(args, startURL)
 
 	cmd := exec.Command(cfg.ChromeApp, args...)
 	cmd.Stdout = io.Discard
@@ -118,7 +122,7 @@ func launchChromeForCDP(cfg config.Config, log interface {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start chrome: %w", err)
 	}
-	log.Info("launched Chrome for CDP", "chrome", cfg.ChromeApp, "port", port, "profile", cfg.UserDataDir)
+	log.Info("launched Chrome for CDP", "chrome", cfg.ChromeApp, "port", port, "profile", cfg.UserDataDir, "start_url", startURL)
 	return nil
 }
 

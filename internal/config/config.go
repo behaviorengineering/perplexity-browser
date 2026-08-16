@@ -16,6 +16,9 @@ type Config struct {
 	SessionsDir      string
 	StatePath        string // legacy single-file state (migrated into sessions/default.json)
 	BaseURL          string
+	// WarmupURL is opened on browser cold-start before navigating to BaseURL
+	// (helps some Cloudflare / bot walls). Empty disables warmup.
+	WarmupURL        string
 	Headless         bool
 	DefaultTimeoutMS int
 	SearchTimeoutMS  int
@@ -42,6 +45,7 @@ func Load() Config {
 		SessionID:        sanitizeSessionIDEnv(envOr("PERPLEXITY_BROWSER_SESSION_ID", "default")),
 		SessionsDir:      envOr("PERPLEXITY_BROWSER_SESSIONS_DIR", filepath.Join(root, "sessions")),
 		BaseURL:          envOr("PERPLEXITY_BROWSER_BASE_URL", "https://www.perplexity.ai"),
+		WarmupURL:        loadWarmupURL(),
 		Headless:         envBool("PERPLEXITY_BROWSER_HEADLESS", false),
 		DefaultTimeoutMS: envInt("PERPLEXITY_BROWSER_DEFAULT_TIMEOUT_MS", 900_000),
 		SearchTimeoutMS:  envInt("PERPLEXITY_BROWSER_SEARCH_TIMEOUT_MS", 180_000),
@@ -62,6 +66,20 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// loadWarmupURL defaults to Google. Set PERPLEXITY_BROWSER_WARMUP_URL to off/none/0/false to disable.
+func loadWarmupURL() string {
+	v := strings.TrimSpace(os.Getenv("PERPLEXITY_BROWSER_WARMUP_URL"))
+	if v == "" {
+		return "https://www.google.com"
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off", "none", "disable", "disabled":
+		return ""
+	default:
+		return v
+	}
 }
 
 func envBool(key string, fallback bool) bool {

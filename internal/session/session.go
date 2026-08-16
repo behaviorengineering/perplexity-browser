@@ -456,14 +456,8 @@ func (m *Manager) gotoHomeLocked(ctx context.Context) error {
 	if m.page == nil {
 		return fmt.Errorf("no page")
 	}
-	if _, err := m.page.Goto(m.cfg.BaseURL, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(60_000),
-	}); err != nil {
-		return fmt.Errorf("goto %s: %w", m.cfg.BaseURL, err)
-	}
-	perplexity.WaitAfterHome(m.page)
-	return nil
+	// Shared path: optional warmup (google.com) → Perplexity home → reload settle.
+	return perplexity.GotoHomeViaWarmup(m.page, m.cfg.WarmupURL, m.cfg.BaseURL)
 }
 
 // needsPerplexityHome reports whether the active tab is blank or off perplexity.ai

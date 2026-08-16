@@ -26,8 +26,10 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 	}, h.session)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "perplexity_research",
-		Description: "Start a new Perplexity thread (Search or Deep research), submit a prepared prompt, and wait for the answer.",
+		Name: "perplexity_research",
+		Description: "Start a new Perplexity thread, select modality (default Deep research via compose `/` command menu), " +
+			"submit a prepared prompt, and wait for the answer. mode=deep types `/` then chooses Deep Research (Use); " +
+			"mode=search leaves the default Search compose.",
 	}, h.research)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -37,7 +39,7 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "perplexity_export",
-		Description: "Export the full conversation via Perplexity Share UI (markdown file). Returns export_manual if UI export fails so the human can Share/copy manually.",
+		Description: "Export the active thread as markdown: ⋯ menu → Export as Markdown (ExpectDownload+SaveAs), then Deep Research download, then scrape fallback. Returns export_manual only if all paths fail.",
 	}, h.export)
 }
 
@@ -54,7 +56,7 @@ type sessionIn struct {
 
 type researchIn struct {
 	Prompt    string `json:"prompt" jsonschema:"full prepared prompt text"`
-	Mode      string `json:"mode,omitempty" jsonschema:"deep or search; default deep"`
+	Mode      string `json:"mode,omitempty" jsonschema:"deep (default; open compose / modality menu → Deep Research) or search"`
 	TitleHint string `json:"title_hint,omitempty" jsonschema:"optional thread title hint without case PII"`
 	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"override wait timeout in milliseconds"`

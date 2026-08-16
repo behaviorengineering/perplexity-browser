@@ -11,9 +11,9 @@ Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
 | Tool | Status |
 |------|--------|
 | `perplexity_session` | **Yes** — `status`, `wait_for_login`, `close`, `cancel` |
-| `perplexity_research` | **Yes** — new thread, mode (`deep`/`search`), submit, wait, extract |
+| `perplexity_research` | **Yes** — new thread; `mode=deep` via compose `/` → **Deep Research** (+ **Use**); fallback legacy mode pills; submit, wait, extract |
 | `perplexity_continue` | **Yes** — follow-up on active thread |
-| `perplexity_export` | **Yes** — Share → markdown into export dir (`ui_export` only; `export_manual` if UI fails) |
+| `perplexity_export` | **Yes** — ⋯ menu → Export as Markdown (not Share) / Deep Research download via Playwright `ExpectDownload`+`SaveAs` (GUID filenames OK under CDP); scrape fallback; `export_manual` only if both fail |
 
 ## Setup
 
@@ -45,7 +45,7 @@ If Cloudflare / “security verification” blocks you on **Chromium for Testing
 }
 ```
 
-When `PERPLEXITY_BROWSER_CDP_URL` is set, the MCP **auto-launches Google Chrome** with the same flags as `scripts/chrome-cdp.sh` if nothing is listening on that port (`PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=1`, default). Playwright-go then attaches over CDP. If the restored tab is blank or off-site (Chrome often ignores the startup URL with a reused profile), `status` / `wait_for_login` navigate once to Perplexity; an already-open Perplexity tab is left alone. `close` disconnects only; Chrome stays open for login. Set `PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=0` to require a manual `chrome-cdp.sh` start.
+When `PERPLEXITY_BROWSER_CDP_URL` is set, the MCP **auto-launches Google Chrome** with the same flags as `scripts/chrome-cdp.sh` if nothing is listening on that port (`PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=1`, default). Playwright-go then attaches over CDP. Chrome cold-starts on **`PERPLEXITY_BROWSER_WARMUP_URL`** (default `https://www.google.com`); the MCP then navigates to Perplexity when needed. If the restored tab is blank or off-site, `status` / `wait_for_login` warm up then open Perplexity; an already-open Perplexity tab is left alone. `close` disconnects only; Chrome stays open for login. Set `PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH=0` to require a manual `chrome-cdp.sh` start.
 
 Alternative without CDP (Playwright launches Chromium/Chrome directly):
 
@@ -123,6 +123,7 @@ Reference consumer (domain-specific): Consilium `.cursor/skills/perplexity-brows
 | `PERPLEXITY_BROWSER_SESSIONS_DIR` | `~/.perplexity-browser-mcp/sessions` — one `\<session_id\>.json` per caller |
 | `PERPLEXITY_BROWSER_HEADLESS` | `0` |
 | `PERPLEXITY_BROWSER_BASE_URL` | `https://www.perplexity.ai` |
+| `PERPLEXITY_BROWSER_WARMUP_URL` | `https://www.google.com` — cold-start landing before Perplexity; set `off` to disable |
 | `PERPLEXITY_BROWSER_DEFAULT_TIMEOUT_MS` | `900000` |
 | `PERPLEXITY_BROWSER_SEARCH_TIMEOUT_MS` | `180000` |
 | `PERPLEXITY_BROWSER_POLL_MS` | `800` (idle/stability poll) |
@@ -131,6 +132,13 @@ Reference consumer (domain-specific): Consilium `.cursor/skills/perplexity-brows
 | `PERPLEXITY_BROWSER_CDP_URL` | (empty) — when set, attach over CDP instead of Playwright launch |
 | `PERPLEXITY_BROWSER_CDP_AUTO_LAUNCH` | `1` — launch Chrome like `scripts/chrome-cdp.sh` when CDP connect fails |
 | `PERPLEXITY_BROWSER_CHROME_APP` | OS default Google Chrome path |
+
+## Known UI quirks
+
+- After `Goto` home, the server **reloads once** before compose. That clears first-paint **new collection / project** modals that otherwise cover `#ask-input`.
+- Automation **does not** click bare **New** (that control opens Collections/Projects). It uses **New Thread** only when needed, and dismisses Cancel/Escape overlays before typing.
+- Completion wait no longer treats bare **Cancel**, page-wide “searching/thinking” text inside the finished answer, or `main` length churn (related/sources) as “still generating.”
+- Rebuild (`make build`) updates `bin/perplexity-browser-mcp`. **Restart the MCP server in Cursor** so the running process picks up the new binary.
 
 ## License
 
