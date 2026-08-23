@@ -49,3 +49,25 @@ func TestAuthPathDetection(t *testing.T) {
 		}
 	}
 }
+
+func TestNeedsPerplexityHome(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"", true},
+		{"about:blank", true},
+		{"ABOUT:BLANK", true},
+		{"chrome://newtab/", true},
+		{"https://www.google.com/", true},
+		{"https://www.perplexity.ai/", false},
+		{"https://www.perplexity.ai/search/foo", false},
+		{"https://www.perplexity.ai/login", false},
+	}
+	for _, tc := range cases {
+		if got := needsPerplexityHome(tc.url); got != tc.want {
+			t.Fatalf("%q: got %v want %v", tc.url, got, tc.want)
+		}
+	}
+}

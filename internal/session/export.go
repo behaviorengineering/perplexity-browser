@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -11,14 +12,18 @@ import (
 
 const exportPreviewChars = 8000
 
-// Export writes the current thread conversation to markdown under saveDir
-// (or the configured export dir). Prefers UI export; falls back to scrape.
-func (m *Manager) Export(ctx context.Context, threadID, format, saveDir string) result.Export {
-	_ = ctx
+const exportManualHint = "UI export failed: in the headed browser use ⋯ → Export as Markdown (or Deep Research Download), then paste or save the file for the assistant"
+
+// Export writes the current thread via Perplexity UI export (⋯ menu / Deep Research download),
+// falling back to page scrape when the download UI path fails.
+func (m *Manager) Export(ctx context.Context, threadID, format, saveDir, sessionID string) result.Export {
+	sessionID = m.resolveSessionID(sessionID)
 	out := result.Export{
 		Base:   result.Base{Busy: true},
 		Format: "markdown",
 	}
+	m.stampSession(&out.Base, sessionID)
+
 	if format != "" && !strings.EqualFold(format, "markdown") && !strings.EqualFold(format, "text") {
 		out.Status = result.StatusError
 		out.Message = "format must be markdown or text"
@@ -27,6 +32,13 @@ func (m *Manager) Export(ctx context.Context, threadID, format, saveDir string) 
 	}
 	if strings.EqualFold(format, "text") {
 		out.Format = "text"
+	}
+
+	if _, err := m.activateSession(ctx, sessionID); err != nil {
+		out.Status = result.StatusError
+		out.Message = err.Error()
+		out.Busy = false
+		return out
 	}
 
 	m.mu.Lock()
@@ -43,7 +55,7 @@ func (m *Manager) Export(ctx context.Context, threadID, format, saveDir string) 
 	}
 	if threadID != "" && active != "" && threadID != active {
 		out.Status = result.StatusError
-		out.Message = "thread_id mismatch with active thread"
+		out.Message = fmt.Sprintf("thread_id mismatch: session %q has %s, requested %s", sessionID, active, threadID)
 		out.ThreadID = active
 		out.URL = page.URL()
 		out.Busy = false
@@ -59,49 +71,53 @@ func (m *Manager) Export(ctx context.Context, threadID, format, saveDir string) 
 	out.ThreadID = threadID
 	out.URL = page.URL()
 
-	// Attempt UI export first (best effort).
-	if path, err := perplexity.TryUIExportMarkdown(page, saveDir); err == nil && path != "" {
-		body, _ := os.ReadFile(path)
-		preview, trunc := previewMarkdown(string(body), exportPreviewChars)
-		out.Status = result.StatusOK
-		out.Method = "ui_export"
-		out.Path = path
-		out.MarkdownPreview = preview
-		out.PreviewChars = len(preview)
-		out.TurnCount = countTurns(string(body))
-		out.Busy = false
-		out.Message = "ok"
-		if trunc {
-			out.Message = "ok (preview truncated; full file on disk)"
-		}
-		return out
+	path, uiErr := perplexity.TryUIExportMarkdown(page, saveDir, threadID)
+	if uiErr == nil && path != "" {
+		return m.finishExportOK(out, path, "ui_export")
 	}
 
-	conv, err := perplexity.ScrapeConversation(page, threadID)
-	if err != nil {
-		out.Status = result.StatusError
-		out.Message = err.Error()
-		out.Busy = false
-		return out
+	// Scrape fallback: captures the visible thread answer (often a Deep Research summary).
+	// Full report bytes still prefer the UI download path above.
+	conv, scrapeErr := perplexity.ScrapeConversation(page, threadID)
+	if scrapeErr == nil {
+		md := perplexity.FormatMarkdown(conv)
+		path, writeErr := perplexity.WriteExportFile(saveDir, threadID, md)
+		if writeErr == nil && path != "" {
+			out = m.finishExportOK(out, path, "scrape")
+			if uiErr != nil {
+				out.Message = "ok via scrape fallback (UI download failed: " + uiErr.Error() + ")"
+			} else {
+				out.Message = "ok via scrape fallback (UI download did not produce a file)"
+			}
+			return out
+		}
+		if writeErr != nil {
+			uiErr = fmt.Errorf("%v; scrape write: %w", uiErr, writeErr)
+		}
+	} else if uiErr != nil {
+		uiErr = fmt.Errorf("%v; scrape: %w", uiErr, scrapeErr)
+	} else {
+		uiErr = scrapeErr
 	}
-	md := perplexity.FormatMarkdown(conv)
-	if out.Format == "text" {
-		md = stripMD(md)
+
+	out.Status = result.StatusExportManual
+	out.Message = exportManualHint
+	if uiErr != nil {
+		out.Message = exportManualHint + " (" + uiErr.Error() + ")"
 	}
-	path, err := perplexity.WriteExportFile(saveDir, threadID, md)
-	if err != nil {
-		out.Status = result.StatusError
-		out.Message = err.Error()
-		out.Busy = false
-		return out
-	}
-	preview, trunc := previewMarkdown(md, exportPreviewChars)
+	out.Busy = false
+	return out
+}
+
+func (m *Manager) finishExportOK(out result.Export, path, method string) result.Export {
+	body, _ := os.ReadFile(path)
+	preview, trunc := previewMarkdown(string(body), exportPreviewChars)
 	out.Status = result.StatusOK
-	out.Method = "scrape"
+	out.Method = method
 	out.Path = path
-	out.TurnCount = conv.Turns
 	out.MarkdownPreview = preview
 	out.PreviewChars = len(preview)
+	out.TurnCount = countTurns(string(body))
 	out.Busy = false
 	out.Message = "ok"
 	if trunc {
@@ -125,11 +141,4 @@ func countTurns(md string) int {
 		}
 	}
 	return n
-}
-
-func stripMD(s string) string {
-	s = strings.ReplaceAll(s, "# ", "")
-	s = strings.ReplaceAll(s, "## ", "")
-	s = strings.ReplaceAll(s, "### ", "")
-	return s
 }

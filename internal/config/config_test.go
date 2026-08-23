@@ -13,6 +13,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PERPLEXITY_BROWSER_EXPORT_DIR", "")
 	t.Setenv("PERPLEXITY_BROWSER_HEADLESS", "")
 	t.Setenv("PERPLEXITY_BROWSER_BASE_URL", "")
+	t.Setenv("PERPLEXITY_BROWSER_WARMUP_URL", "")
 
 	cfg := config.Load()
 	home, err := os.UserHomeDir()
@@ -32,12 +33,16 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BaseURL != "https://www.perplexity.ai" {
 		t.Fatalf("BaseURL = %q", cfg.BaseURL)
 	}
+	if cfg.WarmupURL != "https://www.google.com" {
+		t.Fatalf("WarmupURL = %q", cfg.WarmupURL)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
 	t.Setenv("PERPLEXITY_BROWSER_HEADLESS", "1")
 	t.Setenv("PERPLEXITY_BROWSER_DEFAULT_TIMEOUT_MS", "60000")
 	t.Setenv("PERPLEXITY_BROWSER_BASE_URL", "https://example.test")
+	t.Setenv("PERPLEXITY_BROWSER_WARMUP_URL", "https://warmup.test")
 
 	cfg := config.Load()
 	if !cfg.Headless {
@@ -48,5 +53,18 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.BaseURL != "https://example.test" {
 		t.Fatalf("BaseURL = %q", cfg.BaseURL)
+	}
+	if cfg.WarmupURL != "https://warmup.test" {
+		t.Fatalf("WarmupURL = %q", cfg.WarmupURL)
+	}
+}
+
+func TestLoadWarmupURLDisabled(t *testing.T) {
+	// Explicit empty is not possible via envOr; use a sentinel "-" then document
+	// that PERPLEXITY_BROWSER_WARMUP_URL=off disables. Prefer off/none/0.
+	t.Setenv("PERPLEXITY_BROWSER_WARMUP_URL", "off")
+	cfg := config.Load()
+	if cfg.WarmupURL != "" {
+		t.Fatalf("WarmupURL should be disabled, got %q", cfg.WarmupURL)
 	}
 }

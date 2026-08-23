@@ -26,7 +26,7 @@ func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	s := mgr.Status(ctx, true)
+	s := mgr.Status(ctx, true, "")
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(s); err != nil {
