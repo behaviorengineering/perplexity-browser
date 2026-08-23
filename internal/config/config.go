@@ -10,12 +10,12 @@ import (
 
 // Config holds runtime paths and timeouts.
 type Config struct {
-	UserDataDir      string
-	ExportDir        string
-	SessionID        string
-	SessionsDir      string
-	StatePath        string // legacy single-file state (migrated into sessions/default.json)
-	BaseURL          string
+	UserDataDir string
+	ExportDir   string
+	SessionID   string
+	SessionsDir string
+	StatePath   string // legacy single-file state (migrated into sessions/default.json)
+	BaseURL     string
 	// WarmupURL is opened on browser cold-start before navigating to BaseURL
 	// (helps some Cloudflare / bot walls). Empty disables warmup.
 	WarmupURL        string

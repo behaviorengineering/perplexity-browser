@@ -203,19 +203,19 @@ func (o Options) templateVars(paths outputPaths) map[string]string {
 func packVars(o Options, paths outputPaths) map[string]string {
 	prep := discoverPrepPaths(o.RepoRoot)
 	return map[string]string{
-		"PACK_TITLE":              titleCase(o.PackSlug),
-		"WORKFLOW_ID":             o.WorkflowID,
-		"MODE":                    o.Mode,
-		"PROJECT_NAME":            o.ProjectName,
-		"CONTEXT_DESCRIPTION":     "External research for this repository using Perplexity Pro.",
-		"REVIEWED_PATHS":          prep,
-		"PRIMARY_QUESTION":        "[Describe the research question for this pack.]",
-		"CONSTRAINTS":             "[Add repo-specific constraints: stack, versions, compliance, scope.]",
-		"EXTRA_CONSTRAINTS":       "Align recommendations with this repo's documented architecture and dependencies.",
-		"EXCERPT_A_LABEL":         "README",
-		"EXCERPT_A_PATH":          "README.md",
-		"EXCERPT_B_LABEL":         "Architecture or docs",
-		"EXCERPT_B_PATH":          "docs/ (relevant files)",
+		"PACK_TITLE":               titleCase(o.PackSlug),
+		"WORKFLOW_ID":              o.WorkflowID,
+		"MODE":                     o.Mode,
+		"PROJECT_NAME":             o.ProjectName,
+		"CONTEXT_DESCRIPTION":      "External research for this repository using Perplexity Pro.",
+		"REVIEWED_PATHS":           prep,
+		"PRIMARY_QUESTION":         "[Describe the research question for this pack.]",
+		"CONSTRAINTS":              "[Add repo-specific constraints: stack, versions, compliance, scope.]",
+		"EXTRA_CONSTRAINTS":        "Align recommendations with this repo's documented architecture and dependencies.",
+		"EXCERPT_A_LABEL":          "README",
+		"EXCERPT_A_PATH":           "README.md",
+		"EXCERPT_B_LABEL":          "Architecture or docs",
+		"EXCERPT_B_PATH":           "docs/ (relevant files)",
 		"POST_EXPORT_INSTRUCTIONS": "Summarize findings into docs/research/ or the issue/PR after human review. Link export path in the research note.",
 	}
 }
