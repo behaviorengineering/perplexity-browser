@@ -3,15 +3,15 @@ package result
 
 // Status values for tool JSON bodies.
 const (
-	StatusOK         = "ok"
-	StatusNeedLogin  = "need_login"
-	StatusTimeout    = "timeout"
-	StatusUIChanged  = "ui_changed"
-	StatusBusy       = "busy"
-	StatusError      = "error"
-	StatusCancelled  = "cancelled"
-	StatusNotReady      = "not_ready"
-	StatusExportManual  = "export_manual" // UI export failed; human Share/copy required
+	StatusOK           = "ok"
+	StatusNeedLogin    = "need_login"
+	StatusTimeout      = "timeout"
+	StatusUIChanged    = "ui_changed"
+	StatusBusy         = "busy"
+	StatusError        = "error"
+	StatusCancelled    = "cancelled"
+	StatusNotReady     = "not_ready"
+	StatusExportManual = "export_manual" // UI export failed; human Share/copy required
 )
 
 // Citation is a best-effort link from a Perplexity answer.
@@ -22,11 +22,11 @@ type Citation struct {
 
 // Base is common fields on every tool response.
 type Base struct {
-	Status   string `json:"status"`
-	Message  string `json:"message,omitempty"`
-	ThreadID string `json:"thread_id,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Busy     bool   `json:"busy"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	ThreadID        string `json:"thread_id,omitempty"`
+	URL             string `json:"url,omitempty"`
+	Busy            bool   `json:"busy"`
 	SessionID       string `json:"session_id,omitempty"`
 	ActiveSessionID string `json:"active_session_id,omitempty"`
 }
@@ -56,9 +56,9 @@ type Export struct {
 // Session is a perplexity_session response.
 type Session struct {
 	Base
-	LoggedIn        bool   `json:"logged_in"`
-	UserDataDir     string `json:"user_data_dir,omitempty"`
-	ExportDir       string `json:"export_dir,omitempty"`
-	SessionsDir     string `json:"sessions_dir,omitempty"`
-	BrowserOpen     bool   `json:"browser_open"`
+	LoggedIn    bool   `json:"logged_in"`
+	UserDataDir string `json:"user_data_dir,omitempty"`
+	ExportDir   string `json:"export_dir,omitempty"`
+	SessionsDir string `json:"sessions_dir,omitempty"`
+	BrowserOpen bool   `json:"browser_open"`
 }

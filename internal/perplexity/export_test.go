@@ -55,10 +55,10 @@ func TestWriteExportFile(t *testing.T) {
 
 func TestEnsureMarkdownExt(t *testing.T) {
 	cases := map[string]string{
-		"":                                      "export.md",
-		"report.md":                             "report.md",
-		"report.markdown":                       "report.markdown",
-		"report.txt":                            "report.md",
+		"":                                     "export.md",
+		"report.md":                            "report.md",
+		"report.markdown":                      "report.markdown",
+		"report.txt":                           "report.md",
 		"79a0f5ef-7f85-4f69-b1f4-cfa3fed7832f": "79a0f5ef-7f85-4f69-b1f4-cfa3fed7832f.md",
 	}
 	for in, want := range cases {

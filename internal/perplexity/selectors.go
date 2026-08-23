@@ -29,8 +29,8 @@ var (
 
 	// Current UI (2026): type "/" in compose to open the modality command menu.
 	// Options include Deep Research, Model Council, Plan mode, Create skill, Settings.
-	DeepResearchMenuPattern = regexp.MustCompile(`(?i)deep\s*research`)
-	SearchMenuPattern       = regexp.MustCompile(`(?i)^search$`)
+	DeepResearchMenuPattern  = regexp.MustCompile(`(?i)deep\s*research`)
+	SearchMenuPattern        = regexp.MustCompile(`(?i)^search$`)
 	ModalityUseButtonPattern = regexp.MustCompile(`(?i)^use$`)
 
 	// Visible after a modality is active (compose chrome chips / mode label).

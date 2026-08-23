@@ -23,7 +23,6 @@ var stopLabel = regexp.MustCompile(`(?i)\b(stop|cancel)\b`)
 // regexpStopGenerating matches Stop / Stop generating controls (not Cancel).
 var regexpStopGenerating = regexp.MustCompile(`(?i)stop(\s+generating|\s+research|\s+response)?`)
 
-
 // ErrUIChanged means selectors no longer match the live UI.
 type ErrUIChanged struct {
 	Op  string
