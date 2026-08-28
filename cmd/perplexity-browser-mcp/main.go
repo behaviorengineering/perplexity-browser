@@ -17,7 +17,8 @@ import (
 	"github.com/behaviorengineering/perplexity-browser/internal/session"
 )
 
-const version = "0.1.0"
+// version is set by GoReleaser via -ldflags -X main.version=...
+var version = "dev"
 
 func main() {
 	os.Exit(run(os.Args))
