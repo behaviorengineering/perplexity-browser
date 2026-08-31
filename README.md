@@ -140,6 +140,23 @@ Reference consumer (domain-specific): Consilium `.cursor/skills/perplexity-brows
 - Completion wait no longer treats bare **Cancel**, page-wide “searching/thinking” text inside the finished answer, or `main` length churn (related/sources) as “still generating.”
 - Rebuild (`make build`) updates `bin/perplexity-browser-mcp`. **Restart the MCP server in Cursor** so the running process picks up the new binary.
 
+## Releases (for agents)
+
+Releases are `v*` tags plus GitHub Release binaries from GoReleaser.
+
+**Auto patch on `main`:** every push to `main` that is not docs/chore/ci-only creates `vX.Y.(Z+1)` and publishes a release (workflow `auto-patch-release.yml`). Put `[skip release]` in the commit subject to opt out once.
+
+**Skip (no tag):** when every commit subject since the last `v*` tag is only `docs:`, `chore:`, or `ci:` (conventional prefixes).
+
+**Manual minor/major:** run workflow **Auto patch release** with `bump=minor` or `bump=major` (or push a `v*` tag yourself). Use major only for breaking public API changes.
+
+**After a new tag, consumer agents MUST pin:**
+
+```bash
+git -C providers/perplexity-browser fetch --tags origin
+git -C providers/perplexity-browser checkout "vX.Y.Z"
+```
+
 ## License
 
 Apache-2.0
