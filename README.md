@@ -2,6 +2,8 @@
 
 Go MCP server that drives **perplexity.ai** in a headed Playwright browser (Pro login, Deep research, continue, export).
 
+Agents: start at [AGENTS.md](AGENTS.md). Skills: [ai-copilots/](ai-copilots/).
+
 **Status:** P3 — session, research, continue, and export are wired.
 
 Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
