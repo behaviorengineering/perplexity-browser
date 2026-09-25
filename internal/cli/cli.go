@@ -22,19 +22,26 @@ var Version = "dev"
 
 // Run dispatches init/help/version or starts the MCP stdio server.
 func Run(args []string) int {
-	if len(args) > 1 {
-		switch args[1] {
-		case "init":
-			return runInit(args[2:])
-		case "help", "-h", "--help":
-			printUsage(os.Stdout)
-			return 0
-		case "version", "-v", "--version":
-			fmt.Printf("perplexity-browser-mcp %s\n", Version)
-			return 0
-		}
+	if len(args) <= 1 {
+		fmt.Print(agentOperatingGuide())
+		return 0
 	}
-	return runMCP()
+	switch args[1] {
+	case "init":
+		return runInit(args[2:])
+	case "help", "-h", "--help":
+		printUsage(os.Stdout)
+		return 0
+	case "version", "-v", "--version":
+		fmt.Printf("perplexity-browser-mcp %s\n", Version)
+		return 0
+	case "serve", "mcp":
+		return runMCP()
+	default:
+		fmt.Fprintf(os.Stderr, "perplexity-browser-mcp: unknown command %q\n", args[1])
+		printUsage(os.Stderr)
+		return 2
+	}
 }
 
 func runMCP() int {
@@ -106,7 +113,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, `perplexity-browser-mcp %s
 
 Usage:
-  perplexity-browser-mcp              Start MCP stdio server (default)
+  perplexity-browser-mcp serve        Start MCP stdio server
   perplexity-browser-mcp init [dir]   Scaffold Perplexity workflow files in a repo
   perplexity-browser-mcp help         Show this help
   perplexity-browser-mcp version      Print version
