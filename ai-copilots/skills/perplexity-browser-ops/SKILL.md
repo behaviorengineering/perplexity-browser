@@ -12,6 +12,8 @@ description: >-
 
 ## Commands
 
+MCP clients MUST invoke `perplexity-browser-mcp serve` (bare binary prints agent guide only).
+
 ```bash
 make bootstrap   # go mod tidy + Playwright Chromium
 make build       # bin/perplexity-browser-mcp
