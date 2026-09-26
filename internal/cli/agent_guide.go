@@ -20,7 +20,7 @@ COMMANDS BY RISK & LIFECYCLE
 
   Execute & Mutate
     serve        Start MCP stdio server (default for Cursor wiring)
-    init         Scaffold workflow files in a host repo
+    init         Scaffold workflow files in a consumer repository
 
 AUTOMATION RULES FOR AGENTS
   - Never commit Perplexity session cookies or user-data paths into git.
