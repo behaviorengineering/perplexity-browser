@@ -1,4 +1,4 @@
-.PHONY: help bootstrap build test smoke install tidy ci
+.PHONY: help bootstrap build test smoke install tidy ci hooks-install
 
 .DEFAULT_GOAL := help
 
@@ -16,6 +16,7 @@ help:
 	@echo "  make smoke       Build + run session status smoke"
 	@echo "  make install     Copy $(BIN) to \$${GOBIN:-\$${HOME}/go/bin}"
 	@echo "  make tidy        go mod tidy"
+	@echo "  make hooks-install  Install Lefthook git hooks (once per clone)"
 
 bootstrap:
 	$(GO) mod tidy
@@ -48,3 +49,10 @@ smoke: build
 
 install: build
 	install -m 755 $(BIN) "$${GOBIN:-$${HOME}/go/bin}/perplexity-browser-mcp"
+
+hooks-install:
+	@command -v lefthook >/dev/null 2>&1 || { \
+		if command -v brew >/dev/null 2>&1; then brew install lefthook; \
+		else go install github.com/evilmartians/lefthook@latest; fi; }
+	@command -v lefthook >/dev/null 2>&1 || { echo "lefthook not on PATH; add $$(go env GOPATH)/bin"; exit 1; }
+	lefthook install
