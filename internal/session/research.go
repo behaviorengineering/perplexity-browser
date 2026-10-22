@@ -11,6 +11,7 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 
+	"github.com/behaviorengineering/perplexity-browser/internal/pagewatch"
 	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
 	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
@@ -56,14 +57,21 @@ func (m *Manager) Research(ctx context.Context, prompt, mode, titleHint, session
 	}
 
 	if err := perplexity.EnsureCompose(page); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page, sessionID)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID, nil)
 	}
 	if err := perplexity.SetMode(page, mode); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page, sessionID)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID, nil)
 	}
 	if err := perplexity.SubmitPrompt(page, prompt); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page, sessionID)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID, nil)
 	}
+
+	w := m.attachWatch(page)
+	defer func() {
+		if w != nil {
+			_ = w.Stop()
+		}
+	}()
 
 	threadID := newThreadID()
 	m.mu.Lock()
@@ -76,9 +84,9 @@ func (m *Manager) Research(ctx context.Context, prompt, mode, titleHint, session
 	waitCtx, stopWait := mergeCancel(ctx, runCtx)
 	defer stopWait()
 	if err := perplexity.WaitComplete(waitCtx, page, m.waitSettings(timeoutMS)); err != nil {
-		return m.finishTurn(out, page, sessionID, threadID, mode, start, err, titleHint)
+		return m.finishTurn(out, page, sessionID, threadID, mode, start, err, titleHint, w)
 	}
-	return m.finishTurn(out, page, sessionID, threadID, mode, start, nil, titleHint)
+	return m.finishTurn(out, page, sessionID, threadID, mode, start, nil, titleHint, w)
 }
 
 // Continue sends a follow-up on the active thread and waits for the next answer.
@@ -143,14 +151,22 @@ func (m *Manager) Continue(ctx context.Context, message, threadID, sessionID str
 	timeoutMS = m.resolveTimeout(mode, timeoutMS)
 
 	if err := perplexity.SubmitPrompt(page, message); err != nil {
-		return m.mapFlowErr(out, err, mode, start, page, sessionID)
+		return m.mapFlowErr(out, err, mode, start, page, sessionID, nil)
 	}
+
+	w := m.attachWatch(page)
+	defer func() {
+		if w != nil {
+			_ = w.Stop()
+		}
+	}()
+
 	waitCtx, stopWait := mergeCancel(ctx, runCtx)
 	defer stopWait()
 	if err := perplexity.WaitComplete(waitCtx, page, m.waitSettings(timeoutMS)); err != nil {
-		return m.finishTurn(out, page, sessionID, active, mode, start, err, "")
+		return m.finishTurn(out, page, sessionID, active, mode, start, err, "", w)
 	}
-	return m.finishTurn(out, page, sessionID, active, mode, start, nil, "")
+	return m.finishTurn(out, page, sessionID, active, mode, start, nil, "", w)
 }
 
 func (m *Manager) preparePage(ctx context.Context) (playwright.Page, *result.Turn) {
@@ -199,7 +215,7 @@ func (m *Manager) waitSettings(timeoutMS int) perplexity.WaitSettings {
 	}
 }
 
-func (m *Manager) finishTurn(out result.Turn, page playwright.Page, sessionID, threadID, mode string, start time.Time, waitErr error, titleHint string) result.Turn {
+func (m *Manager) finishTurn(out result.Turn, page playwright.Page, sessionID, threadID, mode string, start time.Time, waitErr error, titleHint string, w *pagewatch.Watch) result.Turn {
 	ans, _ := perplexity.ExtractAnswerText(page)
 	ans, trunc := perplexity.Truncate(ans, m.cfg.AnswerMaxChars)
 	out.ThreadID = threadID
@@ -222,8 +238,9 @@ func (m *Manager) finishTurn(out result.Turn, page playwright.Page, sessionID, t
 		out.Status = result.StatusTimeout
 		out.Message = "timed out; partial answer returned if any"
 	default:
-		return m.mapFlowErr(out, waitErr, mode, start, page, sessionID)
+		return m.mapFlowErr(out, waitErr, mode, start, page, sessionID, w)
 	}
+	out.PageWatch = m.finishWatch(w)
 	m.persistTurn(page, sessionID, threadID, mode, titleHint, waitErr)
 	return out
 }
@@ -240,10 +257,11 @@ func (m *Manager) persistTurn(page playwright.Page, sessionID, threadID, mode, t
 	m.saveThreadState(sessionID, threadID, mode, page.URL(), hint)
 }
 
-func (m *Manager) mapFlowErr(out result.Turn, err error, mode string, start time.Time, page playwright.Page, sessionID string) result.Turn {
+func (m *Manager) mapFlowErr(out result.Turn, err error, mode string, start time.Time, page playwright.Page, sessionID string, w *pagewatch.Watch) result.Turn {
 	out.Mode = mode
 	out.ElapsedMS = time.Since(start).Milliseconds()
 	out.Busy = false
+	out.PageWatch = m.finishWatch(w)
 	if page != nil {
 		out.URL = page.URL()
 	}

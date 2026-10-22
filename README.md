@@ -137,6 +137,7 @@ Reference consumer (domain-specific): Consilium `.cursor/skills/perplexity-brows
 
 ## Known UI quirks
 
+- **Page watch (observe-only):** After a successful `SubmitPrompt`, research/continue responses include `page_watch` (navigation, reload, script navigation, page errors). The MCP home reload in `GotoHome` runs **before** submit, so it is not recorded. Rebuild and restart the MCP server to pick up changes. Read `reset_detected` when the answer text looks like the compose chrome (`What do you want to know?`) instead of a thread.
 - After `Goto` home, the server **reloads once** before compose. That clears first-paint **new collection / project** modals that otherwise cover `#ask-input`.
 - Automation **does not** click bare **New** (that control opens Collections/Projects). It uses **New Thread** only when needed, and dismisses Cancel/Escape overlays before typing.
 - Completion wait no longer treats bare **Cancel**, page-wide “searching/thinking” text inside the finished answer, or `main` length churn (related/sources) as “still generating.”

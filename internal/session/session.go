@@ -37,6 +37,8 @@ type Manager struct {
 
 	defaultSessionID string
 	activeSessionID  string
+
+	lastWatch *result.PageWatch
 }
 
 // New creates a Manager (browser not started until EnsureBrowser).
@@ -252,6 +254,7 @@ func (m *Manager) CloseBrowser() error {
 	m.busy = false
 	m.threadID = ""
 	m.mode = ""
+	m.lastWatch = nil
 
 	var first error
 	if m.cdpMode {
@@ -287,6 +290,7 @@ func (m *Manager) Status(ctx context.Context, openBrowser bool, sessionID string
 		ExportDir:   m.cfg.ExportDir,
 		SessionsDir: m.sessionsDir(),
 	}
+	out.PageWatch = m.copyLastWatch()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
