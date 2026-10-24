@@ -60,7 +60,8 @@ var (
 		`[data-testid="answer"]`,
 		`main article`,
 		`main .prose`,
-		`[class*="answer"]`,
+		// Do not use [class*="answer"]: Tailwind vars like --context-pane-answer-*
+		// match the follow-up dock (Ask a follow-up / Search / Computer / Model).
 		// Do not use bare `main`: related/sources keep mutating length after the answer finishes.
 	}
 

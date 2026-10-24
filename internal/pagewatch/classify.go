@@ -50,14 +50,14 @@ func IsComposeResetURL(u string) bool {
 	if host != "perplexity.ai" && host != "www.perplexity.ai" {
 		return false
 	}
-	path := strings.TrimSuffix(pu.Path, "/")
-	if path == "" || path == "/search/new" {
-		return true
+	id, ok := searchID(pu)
+	if !ok {
+		// Home and unknown non-search paths: only "/" is compose.
+		path := strings.Trim(pu.Path, "/")
+		return path == ""
 	}
-	if path == "/search" {
-		return true
-	}
-	return false
+	// /search, /search/new, and /search/new/<client-uuid> are compose, not a thread.
+	return id == "" || id == "new"
 }
 
 // IsInThreadURL reports whether u is a Perplexity thread URL (/search/<id>, id not "new").
@@ -70,27 +70,38 @@ func IsInThreadURL(u string) bool {
 	if err != nil {
 		return false
 	}
+	id, ok := searchID(pu)
+	if !ok {
+		return false
+	}
+	return id != "" && id != "new"
+}
+
+// searchID returns the first /search/ path segment. ok is false when the URL is
+// not a perplexity.ai /search route. id is empty for bare /search.
+func searchID(pu *url.URL) (id string, ok bool) {
+	if pu == nil {
+		return "", false
+	}
 	host := strings.ToLower(pu.Host)
 	if host != "perplexity.ai" && host != "www.perplexity.ai" {
-		return false
+		return "", false
 	}
-	path := strings.Trim(pu.Path, "/")
-	if !strings.HasPrefix(path, "search/") {
-		return false
+	parts := strings.Split(strings.Trim(pu.Path, "/"), "/")
+	if len(parts) == 0 || parts[0] != "search" {
+		return "", false
 	}
-	rest := strings.TrimPrefix(path, "search/")
-	if rest == "" || rest == "new" {
-		return false
+	if len(parts) == 1 {
+		return "", true
 	}
-	// First path segment is thread id; extra segments still count as in-thread.
-	if idx := strings.Index(rest, "/"); idx >= 0 {
-		rest = rest[:idx]
-	}
-	return rest != ""
+	return parts[1], true
 }
 
 // ResetDetected applies compose-reset heuristics from URLs and navigation events.
 func ResetDetected(started, ended string, events []result.PageEvent) bool {
+	if IsInThreadURL(ended) {
+		return false
+	}
 	for _, ev := range events {
 		switch ev.Kind {
 		case "navigation", "reload", "script":
@@ -100,6 +111,9 @@ func ResetDetected(started, ended string, events []result.PageEvent) bool {
 		}
 	}
 	if IsComposeResetURL(ended) && IsInThreadURL(started) {
+		return true
+	}
+	if IsComposeResetURL(ended) && IsComposeResetURL(started) {
 		return true
 	}
 	if IsComposeResetURL(ended) {

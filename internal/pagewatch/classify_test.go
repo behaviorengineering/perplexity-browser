@@ -16,6 +16,7 @@ func TestIsComposeResetURL(t *testing.T) {
 		{"chrome-error://chromewebdata/", true},
 		{"https://www.perplexity.ai/", true},
 		{"https://www.perplexity.ai/search/new", true},
+		{"https://www.perplexity.ai/search/new/6b7ab36a-851a-4f39-8e2b-e1667862cced", true},
 		{"https://www.perplexity.ai/search", true},
 		{"https://www.perplexity.ai/search/abc123", false},
 		{"https://perplexity.ai/search/thread-id/extra", false},
@@ -33,6 +34,7 @@ func TestIsInThreadURL(t *testing.T) {
 		want bool
 	}{
 		{"https://www.perplexity.ai/search/new", false},
+		{"https://www.perplexity.ai/search/new/6b7ab36a-851a-4f39-8e2b-e1667862cced", false},
 		{"https://www.perplexity.ai/search", false},
 		{"https://www.perplexity.ai/", false},
 		{"https://www.perplexity.ai/search/abc", true},
@@ -94,10 +96,19 @@ func TestResetDetected_homeAfterSubmit(t *testing.T) {
 	}
 }
 
+func TestResetDetected_composeNewClientID(t *testing.T) {
+	started := "https://www.perplexity.ai/search/new/6b7ab36a-851a-4f39-8e2b-e1667862cced"
+	ended := started
+	if !ResetDetected(started, ended, nil) {
+		t.Fatal("staying on /search/new/<uuid> after submit must count as reset")
+	}
+}
+
 func TestResetDetected_searchIdIsNotReset(t *testing.T) {
 	started := "https://www.perplexity.ai/search/new"
 	ended := "https://www.perplexity.ai/search/thread-abc"
 	events := []result.PageEvent{
+		{Kind: "navigation", URL: "https://www.perplexity.ai/search/new/6b7ab36a-851a-4f39-8e2b-e1667862cced"},
 		{Kind: "navigation", URL: ended},
 	}
 	if ResetDetected(started, ended, events) {
