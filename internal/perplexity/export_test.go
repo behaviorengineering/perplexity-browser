@@ -59,6 +59,7 @@ func TestEnsureMarkdownExt(t *testing.T) {
 		"report.md":                            "report.md",
 		"report.markdown":                      "report.markdown",
 		"report.txt":                           "report.md",
+		"report.pdf":                           "report.pdf",
 		"79a0f5ef-7f85-4f69-b1f4-cfa3fed7832f": "79a0f5ef-7f85-4f69-b1f4-cfa3fed7832f.md",
 	}
 	for in, want := range cases {
@@ -103,5 +104,36 @@ func TestNewestExportAcceptsGUIDFile(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "Executive Options") {
 		t.Fatalf("body missing: %s", b)
+	}
+}
+
+func TestIsPDFBytes(t *testing.T) {
+	if !perplexity.IsPDFBytes([]byte("%PDF-1.4\n%")) {
+		t.Fatal("expected PDF magic")
+	}
+	if perplexity.IsPDFBytes([]byte("# Perplexity export\n")) {
+		t.Fatal("markdown is not PDF")
+	}
+	if !perplexity.LooksLikePDFName("thread.pdf") {
+		t.Fatal("expected .pdf name")
+	}
+}
+
+func TestNormalizeExportFileRefusesPDF(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "print.pdf")
+	if err := os.WriteFile(src, []byte("%PDF-1.4\n% Chromium\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := perplexity.NormalizeExportFile(src, dir, "thr_x", "poll"); err == nil {
+		t.Fatal("expected refuse PDF")
+	}
+}
+
+func TestExportMenuPatternsRejectBareDownload(t *testing.T) {
+	for _, sel := range append(append([]string{}, perplexity.ExportMenuPatterns...), perplexity.DeepResearchDownloadPatterns...) {
+		if sel == `(?i)^download$` || sel == `(?i)^export$` {
+			t.Fatalf("bare %q matches Print/PDF", sel)
+		}
 	}
 }
