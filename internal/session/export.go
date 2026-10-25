@@ -106,6 +106,7 @@ func (m *Manager) Export(ctx context.Context, threadID, format, saveDir, session
 		out.Message = exportManualHint + " (" + uiErr.Error() + ")"
 	}
 	out.Busy = false
+	out.PageWatch = m.copyLastWatch()
 	return out
 }
 
@@ -123,6 +124,7 @@ func (m *Manager) finishExportOK(out result.Export, path, method string) result.
 	if trunc {
 		out.Message = "ok (preview truncated; full file on disk)"
 	}
+	out.PageWatch = m.copyLastWatch()
 	return out
 }
 

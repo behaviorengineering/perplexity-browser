@@ -578,24 +578,22 @@ func ExtractAnswerText(page playwright.Page) (string, error) {
 	if page == nil {
 		return "", fmt.Errorf("no page")
 	}
-	// Prefer main article / prose regions.
-	var best string
+	var candidates []string
 	for _, sel := range AnswerTextSelectors {
 		loc := page.Locator(sel)
 		n, err := loc.Count()
 		if err != nil || n == 0 {
 			continue
 		}
-		text, err := loc.Last().InnerText()
-		if err != nil {
-			continue
-		}
-		text = strings.TrimSpace(text)
-		if len(text) > len(best) {
-			best = text
+		for i := 0; i < n; i++ {
+			text, err := loc.Nth(i).InnerText()
+			if err != nil {
+				continue
+			}
+			candidates = append(candidates, text)
 		}
 	}
-	return best, nil
+	return PickAnswerText(candidates...), nil
 }
 
 // ExtractCitations collects link-looking citations from the page.

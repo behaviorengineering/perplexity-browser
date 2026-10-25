@@ -110,6 +110,8 @@ perplexity_research
 
 If automation reports `ui_changed` on mode select, the user can arm Deep Research manually with `/` then tell the assistant to retry submit (or use paste pack).
 
+**`page_watch`:** Research and continue JSON may include `page_watch`. If the answer looks like compose chrome (`What do you want to know?`) and `page_watch.reset_detected` is true, treat it as a **UI reset**, not a real answer (do not cite it). `perplexity_session` status shows the last completed turn's `page_watch`.
+
 After MCP restart, `continue` / `export` reload the thread for the same **session scope** from `~/.perplexity-browser-mcp/sessions/<scope>.json`.
 
 **Global Cursor MCP:** you do **not** need a per-repo env var. Scope defaults to the **workspace folder name**. Only pass `session_id` to override. Same scope on every tool call in one thread (or omit it).

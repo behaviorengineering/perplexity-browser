@@ -13,9 +13,7 @@ import (
 	"github.com/behaviorengineering/perplexity-browser/internal/result"
 )
 
-var (
-	noiseLine = regexp.MustCompile(`(?i)^(answer|links|images|share|sources|ask a follow-up|search|computer|model|related|images?)$`)
-)
+var noiseLine = regexp.MustCompile(`(?i)^(answer|links|images|share|sources|ask a follow-up|search|computer|model|related|images?)$`)
 
 // Conversation is a scraped thread for export.
 type Conversation struct {
@@ -130,6 +128,9 @@ func EnsureMarkdownExt(name string) string {
 		return "export.md"
 	}
 	lower := strings.ToLower(name)
+	if LooksLikePDFName(name) {
+		return name
+	}
 	switch {
 	case strings.HasSuffix(lower, ".md"), strings.HasSuffix(lower, ".markdown"), strings.HasSuffix(lower, ".txt"):
 		if strings.HasSuffix(lower, ".txt") {
@@ -301,6 +302,9 @@ func saveDownloadAsMarkdown(dl playwright.Download, exportDir, threadID, label s
 		return "", fmt.Errorf("nil download")
 	}
 	suggested := dl.SuggestedFilename()
+	if LooksLikePDFName(suggested) {
+		return "", fmt.Errorf("download was PDF, not markdown (%s)", suggested)
+	}
 	// Prefer our stable name; keep extension hint from suggested when useful.
 	baseLabel := label
 	if suggested != "" && !looksLikeGUID(suggested) {
@@ -313,6 +317,14 @@ func saveDownloadAsMarkdown(dl playwright.Download, exportDir, threadID, label s
 	if err := dl.SaveAs(target); err != nil {
 		return "", fmt.Errorf("save download: %w", err)
 	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		return "", err
+	}
+	if IsPDFBytes(body) {
+		_ = os.Remove(target)
+		return "", fmt.Errorf("download was PDF, not markdown (%s)", suggested)
+	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		return target, nil
@@ -324,6 +336,16 @@ func looksLikeGUID(name string) bool {
 	name = strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
 	re := regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	return re.MatchString(name)
+}
+
+// LooksLikePDFName reports a .pdf path or download filename.
+func LooksLikePDFName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(name)), ".pdf")
+}
+
+// IsPDFBytes reports the PDF magic header.
+func IsPDFBytes(b []byte) bool {
+	return len(b) >= 5 && string(b[:5]) == "%PDF-"
 }
 
 func waitForNewestExportFile(dir string, timeout time.Duration) string {
@@ -356,6 +378,9 @@ func newestExportFile(dir string) string {
 		}
 		name := e.Name()
 		lower := strings.ToLower(name)
+		if LooksLikePDFName(name) {
+			continue
+		}
 		// Accept .md / .markdown / .txt and extensionless GUID downloads.
 		ok := strings.HasSuffix(lower, ".md") ||
 			strings.HasSuffix(lower, ".markdown") ||
@@ -368,11 +393,15 @@ func newestExportFile(dir string) string {
 		if err != nil || info.Size() < 32 {
 			continue
 		}
+		path := filepath.Join(dir, name)
+		if head, err := os.ReadFile(path); err == nil && IsPDFBytes(head) {
+			continue
+		}
 		if info.ModTime().Before(cutoff) {
 			continue
 		}
 		if best == "" || info.ModTime().After(bestMod) {
-			best = filepath.Join(dir, name)
+			best = path
 			bestMod = info.ModTime()
 		}
 	}
@@ -392,9 +421,15 @@ func NormalizeExportFile(src, exportDir, threadID, label string) (string, error)
 		}
 		return abs, nil
 	}
+	if LooksLikePDFName(src) {
+		return "", fmt.Errorf("refusing PDF export %s", src)
+	}
 	body, err := os.ReadFile(src)
 	if err != nil {
 		return "", err
+	}
+	if IsPDFBytes(body) {
+		return "", fmt.Errorf("refusing PDF export %s", src)
 	}
 	target := ExportTargetPath(exportDir, threadID, label)
 	if err := os.WriteFile(target, body, 0o600); err != nil {

@@ -60,7 +60,8 @@ var (
 		`[data-testid="answer"]`,
 		`main article`,
 		`main .prose`,
-		`[class*="answer"]`,
+		// Do not use [class*="answer"]: Tailwind vars like --context-pane-answer-*
+		// match the follow-up dock (Ask a follow-up / Search / Computer / Model).
 		// Do not use bare `main`: related/sources keep mutating length after the answer finishes.
 	}
 
@@ -85,27 +86,22 @@ var (
 	}
 
 	// ⋯ menu items that trigger a markdown download (not clipboard-only).
+	// MUST NOT use bare ^download$ / ^export$: those match Print / PDF and save Skia PDFs as .md.
 	ExportMenuPatterns = []string{
 		`(?i)export\s+as\s+markdown`,
+		`(?i)copy\s+as\s+markdown`,
 		`(?i)export.*markdown`,
 		`(?i)download.*markdown`,
 		`(?i)download\s+as\s+markdown`,
 		`(?i)^markdown$`,
-		`(?i)export\s+report`,
-		`(?i)download\s+report`,
-		`(?i)^download$`,
-		`(?i)^export$`,
 	}
 
-	// Deep Research report chrome (outside ⋯ menu): download / export report controls.
-	// Prefer markdown/report labels first so we do not click unrelated Download buttons.
+	// Deep Research report chrome (outside ⋯ menu). Markdown-only labels.
 	DeepResearchDownloadPatterns = []string{
 		`(?i)export\s+as\s+markdown`,
 		`(?i)download.*markdown`,
-		`(?i)export\s+report`,
-		`(?i)download\s+report`,
+		`(?i)download\s+as\s+markdown`,
 		`(?i)download\s+deep\s*research`,
-		`(?i)^download$`,
 	}
 
 	ThreadTitleRenamePatterns = []string{
