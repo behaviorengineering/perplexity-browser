@@ -1,5 +1,9 @@
 # BOOTSTRAP — perplexity-browser ai-copilots
 
+**Preferred:** install the **perplexity-browser** Cursor or Claude plugin ([docs/PLUGIN.md](../docs/PLUGIN.md)). Skills load from `ai-copilots/skills/` without copying files.
+
+**Fallback:** wire-only soft links when the plugin is not available (Copilot, Codex, clones without marketplace).
+
 **Module path:** `github.com/behaviorengineering/perplexity-browser`
 
 ```bash

@@ -52,7 +52,14 @@ func Init(opts Options) (Result, error) {
 	}
 
 	vars := opts.templateVars(paths)
-	workflowBody := substitute(workflowTemplate, vars)
+	var workflowBody string
+	if opts.Layout == LayoutCursor {
+		workflowBody = substitute(personaTemplate, map[string]string{
+			"PROJECT_NAME": opts.ProjectName,
+		})
+	} else {
+		workflowBody = substitute(workflowTemplate, vars)
+	}
 	packBody := substitute(packTemplate, packVars(opts, paths))
 
 	files := []struct {
@@ -144,10 +151,10 @@ func (o Options) outputPaths() (outputPaths, error) {
 			packRel:  packRel,
 		}, nil
 	case LayoutCursor:
-		root := filepath.Join(o.RepoRoot, ".cursor", "skills", o.WorkflowID)
-		packRel := filepath.ToSlash(filepath.Join(".cursor", "skills", o.WorkflowID, "packs", o.PackSlug+".md"))
+		root := filepath.Join(o.RepoRoot, ".cursor", "perplexity")
+		packRel := filepath.ToSlash(filepath.Join(".cursor", "perplexity", "packs", o.PackSlug+".md"))
 		return outputPaths{
-			workflow: filepath.Join(root, "SKILL.md"),
+			workflow: filepath.Join(root, "project-persona.md"),
 			pack:     filepath.Join(root, "packs", o.PackSlug+".md"),
 			packRel:  packRel,
 		}, nil

@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,7 @@ func TestInitDocsLayout(t *testing.T) {
 func TestInitCursorLayoutDefault(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	base := filepath.Base(root)
 
 	_, err := Init(Options{
 		RepoRoot: root,
@@ -61,14 +63,29 @@ func TestInitCursorLayoutDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skill := filepath.Join(root, ".cursor", "skills", slugify(filepath.Base(root))+"-perplexity-research", "SKILL.md")
-	body, err := os.ReadFile(skill)
+	persona := filepath.Join(root, ".cursor", "perplexity", "project-persona.md")
+	pack := filepath.Join(root, ".cursor", "perplexity", "packs", "deep-research.md")
+	for _, want := range []string{persona, pack} {
+		if _, err := os.Stat(want); err != nil {
+			t.Fatalf("missing %s: %v", want, err)
+		}
+	}
+
+	skill := filepath.Join(root, ".cursor", "skills", slugify(base)+"-perplexity-research", "SKILL.md")
+	if _, err := os.Stat(skill); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected skill copy at %s", skill)
+	}
+
+	body, err := os.ReadFile(persona)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(body)
-	if !strings.HasPrefix(s, "---\nname:") {
-		t.Errorf("missing cursor frontmatter: %q", s[:min(80, len(s))])
+	if strings.HasPrefix(s, "---\nname:") {
+		t.Error("persona must not get SKILL frontmatter")
+	}
+	if !strings.Contains(s, base) && !strings.Contains(s, "{{") {
+		t.Errorf("persona should name the project, got %q", s[:min(120, len(s))])
 	}
 }
 

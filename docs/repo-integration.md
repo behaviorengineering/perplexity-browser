@@ -16,16 +16,14 @@
 Human installs MCP + logs in once
         │
         ▼
-perplexity-browser-mcp init [repo]   (default: .cursor/skills/<folder>-perplexity-research/)
+perplexity-browser plugin OR BOOTSTRAP ln  →  ai-copilots/skills in IDE
+perplexity-browser-mcp init [repo]       →  .cursor/perplexity/project-persona.md + packs/
         │
         ▼
-SKILL.md + packs/ in consumer repo
-        │
-        ▼
-Day to day: agent reads workflow → fills pack → perplexity_research(full prompt) → export
+Day to day: plugin skill → read persona → fill pack → perplexity_research(full prompt) → export
 ```
 
-Default `init` writes **Cursor skill** layout (`.cursor/skills/<folder>-perplexity-research/`). Use `--layout docs` for `docs/perplexity/` instead.
+Default `init` writes **host overlay** (`.cursor/perplexity/project-persona.md` and `packs/`). Use `--layout docs` for `docs/perplexity/` instead. Do not copy research `SKILL.md` into the consumer repo.
 
 ## Where generated files go
 
@@ -33,7 +31,7 @@ Pick **one** layout per repo (agent asks if unclear):
 
 | Layout | Workflow doc | Packs | Best for |
 |--------|--------------|-------|----------|
-| **Cursor (default)** | `.cursor/skills/<workflow-id>/SKILL.md` | same folder `packs/` | Cursor (YAML frontmatter included) |
+| **Cursor (default)** | `.cursor/perplexity/project-persona.md` | `.cursor/perplexity/packs/*.md` | Cursor / Claude with plugin + overlay |
 | **Docs** | `docs/perplexity/workflow.md` | `docs/perplexity/packs/*.md` | Any client; versioned in git |
 | **Minimal** | `docs/perplexity.md` | inline sections in same file | Tiny repos, one workflow (manual) |
 
@@ -61,8 +59,8 @@ perplexity-browser-mcp init . --force   # overwrite existing scaffold
 **Default output (cursor layout):**
 
 ```text
-.cursor/skills/<folder>-perplexity-research/SKILL.md
-.cursor/skills/<folder>-perplexity-research/packs/deep-research.md
+.cursor/perplexity/project-persona.md
+.cursor/perplexity/packs/deep-research.md
 ```
 
 **Docs layout** (`--layout docs`):
