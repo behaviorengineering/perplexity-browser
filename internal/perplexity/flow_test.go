@@ -6,6 +6,37 @@ import (
 	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
 )
 
+func TestNormalizeMode(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{"", perplexity.ModeSearch, false},
+		{"  ", perplexity.ModeSearch, false},
+		{"search", perplexity.ModeSearch, false},
+		{"SEARCH", perplexity.ModeSearch, false},
+		{"deep", perplexity.ModeDeep, false},
+		{"Deep", perplexity.ModeDeep, false},
+		{"computer", "", true},
+	}
+	for _, tc := range cases {
+		got, err := perplexity.NormalizeMode(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("in=%q: expected error", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("in=%q: unexpected error: %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Fatalf("in=%q: got %q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	s, trunc := perplexity.Truncate("hello", 10)
 	if trunc || s != "hello" {

@@ -174,8 +174,8 @@ Core MCP sequence (all clients):
 
 ```text
 perplexity_session     action=status
-perplexity_research    prompt=<full pack>  mode=deep|search  title_hint=<no secrets>
-# mode=deep: compose / → Deep Research (+ Use); mode=search: default Search compose
+perplexity_research    prompt=<full pack>  mode=search|deep  title_hint=<no secrets>
+# default search; mode=deep only after user confirm or an explicit Deep Research ask
 perplexity_continue    message=...         # optional follow-ups only
 perplexity_export      format=markdown
 ```

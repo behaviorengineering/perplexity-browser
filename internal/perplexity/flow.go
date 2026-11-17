@@ -18,6 +18,18 @@ const ModeDeep = "deep"
 // ModeSearch is ordinary Search.
 const ModeSearch = "search"
 
+// NormalizeMode returns ModeSearch when mode is empty, otherwise deep or search.
+func NormalizeMode(mode string) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return ModeSearch, nil
+	}
+	if mode != ModeDeep && mode != ModeSearch {
+		return "", fmt.Errorf("mode must be %q or %q", ModeDeep, ModeSearch)
+	}
+	return mode, nil
+}
+
 var stopLabel = regexp.MustCompile(`(?i)\b(stop|cancel)\b`)
 
 // regexpStopGenerating matches Stop / Stop generating controls (not Cancel).
@@ -269,12 +281,10 @@ func DismissBlockingDialogs(page playwright.Page) {
 // from the command menu (Deep Research is first; confirm with Use when shown).
 // Fallback: legacy Search / Deep research pill + menuitem.
 func SetMode(page playwright.Page, mode string) error {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode == "" {
-		mode = ModeDeep
-	}
-	if mode != ModeDeep && mode != ModeSearch {
-		return fmt.Errorf("mode must be %q or %q", ModeDeep, ModeSearch)
+	var err error
+	mode, err = NormalizeMode(mode)
+	if err != nil {
+		return err
 	}
 
 	dismissCookieBanner(page)

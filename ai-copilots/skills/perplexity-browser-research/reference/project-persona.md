@@ -32,7 +32,8 @@ Copy this file to **`.cursor/perplexity/project-persona.md`** in the consumer re
 
 | Need | Pack | Mode |
 |------|------|------|
-| Facts, sources, grounding | `.cursor/perplexity/packs/deep-research.md` if present, else this skill's `packs/deep-research.md` | deep |
+| First lookup / what is still unknown | short prompt (or overlay pack if already filled) | search |
 | Human voice, AI artifacts | `.cursor/perplexity/packs/prose-review.md` if present, else this skill's `packs/prose-review.md` | search |
+| Confirmed tricky or contested facts | `.cursor/perplexity/packs/deep-research.md` if present, else this skill's `packs/deep-research.md` | deep (after user confirm) |
 
 Consumers MAY add extra files under `.cursor/perplexity/packs/` (email, doctrine, claims-only). Prefer those when they exist for this workflow.

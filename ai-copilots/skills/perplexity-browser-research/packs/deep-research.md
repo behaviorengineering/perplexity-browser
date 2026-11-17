@@ -1,6 +1,6 @@
-# Pack — Deep research (default)
+# Pack: Deep research
 
-Workflow: `perplexity-browser-research`. Mode: **deep** (use `search` only for a quick single-fact lookup).
+Workflow: `perplexity-browser-research`. Mode: **deep**. Use only after a Search pass, or when the user asked for Deep Research. Do not treat this pack as the default first submit.
 
 Fill every `[bracket]` from repo files before submit. Copy the **whole** block into `perplexity_research` `prompt`.
 
