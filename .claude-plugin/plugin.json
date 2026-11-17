@@ -1,0 +1,8 @@
+{
+  "name": "perplexity-browser",
+  "description": "Perplexity Pro research MCP plus research and ops skills",
+  "version": "0.1.0",
+  "author": { "name": "behaviorengineering" },
+  "skills": ["./ai-copilots/skills/"],
+  "mcpServers": "./.mcp.json"
+}

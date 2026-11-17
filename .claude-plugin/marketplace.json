@@ -1,0 +1,14 @@
+{
+  "name": "perplexity-browser",
+  "owner": { "name": "behaviorengineering" },
+  "metadata": {
+    "description": "Perplexity Browser MCP plugin (skills plus stdio server)"
+  },
+  "plugins": [
+    {
+      "name": "perplexity-browser",
+      "source": ".",
+      "description": "Research and ops skills plus Perplexity Browser MCP"
+    }
+  ]
+}

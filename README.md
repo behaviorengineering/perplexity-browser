@@ -61,13 +61,27 @@ Alternative without CDP (Playwright launches Chromium/Chrome directly):
 
 If the browser window is closed, the next tool call relaunches from that same profile (you should not need to sign in again). `close` only stops the window; it does **not** wipe the profile.
 
-## Cursor MCP config
+## Cursor and Claude plugin (recommended)
+
+Install the **perplexity-browser** plugin so skills (`perplexity-browser-research`, `perplexity-browser-ops`) and MCP load together. See **[docs/PLUGIN.md](docs/PLUGIN.md)**.
+
+1. Clone into `~/.cursor/plugins/local/perplexity-browser` (real directory, not a symlink outside that folder).
+2. `make build` in the plugin directory.
+3. **Developer: Reload Window**, then start a new Agent chat.
+4. Disable any **user-level** `perplexity-browser` MCP entry so tools are not duplicated (dual-run).
+
+The plugin MCP runs `scripts/mcp-serve.sh`, which always execs `perplexity-browser-mcp serve`.
+
+### Manual MCP config (fallback)
+
+If you are not using the plugin, register stdio MCP yourself and **must** pass `serve`:
 
 ```json
 {
   "mcpServers": {
     "perplexity-browser": {
       "command": "/absolute/path/to/perplexity-browser/bin/perplexity-browser-mcp",
+      "args": ["serve"],
       "env": {
         "PERPLEXITY_BROWSER_HEADLESS": "0"
       }
@@ -76,11 +90,7 @@ If the browser window is closed, the next tool call relaunches from that same pr
 }
 ```
 
-From a Consilium checkout after submodule + build:
-
-```text
-providers/perplexity-browser/bin/perplexity-browser-mcp
-```
+Bare `command` without `args: ["serve"]` prints the agent guide and is not MCP.
 
 ## Multi-session (global MCP entry)
 
@@ -109,10 +119,10 @@ See **[docs/repo-integration.md](docs/repo-integration.md)** for layouts, agent 
 
 | Command | Purpose |
 |---------|---------|
-| `perplexity-browser-mcp init [dir]` | Write workflow + pack templates (default: `.cursor/skills/<folder>-perplexity-research/`) |
+| `perplexity-browser-mcp init [dir]` | Write host overlay (default: `.cursor/perplexity/project-persona.md` + one pack) |
 | `perplexity-browser-mcp help` | Init flags and examples |
 
-Reference consumer (domain-specific): Consilium `.cursor/skills/perplexity-browser-research/`.
+Use the plugin or [ai-copilots/BOOTSTRAP.md](ai-copilots/BOOTSTRAP.md) for skill discovery; host packs live under `.cursor/perplexity/`.
 
 ## Env
 

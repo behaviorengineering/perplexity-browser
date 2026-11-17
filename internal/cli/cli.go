@@ -114,14 +114,14 @@ func printUsage(w io.Writer) {
 
 Usage:
   perplexity-browser-mcp serve        Start MCP stdio server
-  perplexity-browser-mcp init [dir]   Scaffold Perplexity workflow files in a repo
+  perplexity-browser-mcp init [dir]   Scaffold .cursor/perplexity overlay (or docs/perplexity)
   perplexity-browser-mcp help         Show this help
   perplexity-browser-mcp version      Print version
 
 init flags:
   --project string    Project display name (default: directory name)
   --workflow string   Workflow id (default: <dir>-perplexity-research)
-  --layout string     cursor (default) or docs
+  --layout string     cursor (default: .cursor/perplexity overlay) or docs
   --pack string       Pack slug (default: deep-research)
   --mode string       deep (default) or search
   --force             Overwrite existing files

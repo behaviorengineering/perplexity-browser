@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "perplexity-browser": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/mcp-serve.sh",
+      "env": {
+        "PERPLEXITY_BROWSER_HEADLESS": "0"
+      }
+    }
+  }
+}

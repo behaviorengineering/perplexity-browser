@@ -9,10 +9,10 @@ func TestWriteHandoff(t *testing.T) {
 	t.Parallel()
 	var b strings.Builder
 	WriteHandoff(&b, Result{
-		Files:       []string{"/tmp/repo/.cursor/skills/foo-perplexity-research/SKILL.md"},
+		Files:       []string{"/tmp/repo/.cursor/perplexity/project-persona.md"},
 		ProjectName: "foo",
 		WorkflowID:  "foo-perplexity-research",
-		PackRel:     ".cursor/skills/foo-perplexity-research/packs/deep-research.md",
+		PackRel:     ".cursor/perplexity/packs/deep-research.md",
 		Layout:      LayoutCursor,
 		RepoRoot:    "/tmp/repo",
 	})
@@ -21,7 +21,7 @@ func TestWriteHandoff(t *testing.T) {
 		"Next steps:",
 		"perplexity_session",
 		"deep-research.md",
-		"foo-perplexity-research",
+		"project-persona.md",
 		"research input only",
 	} {
 		if !strings.Contains(out, want) {
