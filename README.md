@@ -13,7 +13,7 @@ Consilium design: see that repo’s `docs/planned/perplexity-browser/`.
 | Tool | Status |
 |------|--------|
 | `perplexity_session` | **Yes** — `status`, `wait_for_login`, `close`, `cancel` |
-| `perplexity_research` | **Yes** — new thread; `mode=deep` via compose `/` → **Deep Research** (+ **Use**); fallback legacy mode pills; submit, wait, extract |
+| `perplexity_research` | **Yes** — new thread; default `mode=search` (Search compose); `mode=deep` via compose `/` then **Deep Research** (+ **Use**); fallback legacy mode pills; submit, wait, extract |
 | `perplexity_continue` | **Yes** — follow-up on active thread |
 | `perplexity_export` | **Yes** — ⋯ menu → Export as Markdown (not Share) / Deep Research download via Playwright `ExpectDownload`+`SaveAs` (GUID filenames OK under CDP); scrape fallback; `export_manual` only if both fail |
 

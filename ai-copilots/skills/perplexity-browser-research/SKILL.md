@@ -1,17 +1,17 @@
 ---
 name: perplexity-browser-research
 description: >-
-  Run Perplexity Pro research via the Perplexity Browser MCP
-  (user-perplexity-browser). Use when the user says open in Perplexity,
-  perplexity research, Research mode, Deep Research, paste pack, doctrine
-  lookup, or export perplexity chat. Deep research uses compose `/` modality
-  menu. Browser output is research input only; never treat as project fact
-  without validation.
+  Run Perplexity Pro via the Perplexity Browser MCP. Default is ordinary
+  Search. Use Deep Research only when the user asked for it or confirmed
+  after a Search pass. Triggers: open in Perplexity, perplexity search,
+  Research mode, Deep Research, paste pack, doctrine lookup, export
+  perplexity chat. Browser output is research input only; never treat as
+  project fact without validation.
 ---
 
 # Perplexity browser research
 
-**Why:** Drive **Perplexity Pro** through the **Perplexity Browser MCP** (`user-perplexity-browser`): headed login, Deep Research, continue, export.
+**Why:** Drive **Perplexity Pro** through the **Perplexity Browser MCP** (`user-perplexity-browser`): headed login, ordinary Search first, Deep Research only after confirm, continue, export.
 
 **Not a source of truth.** Export is research input. Fact-check against primary sources and the project's own doctrine or content rules before writing repo files.
 
@@ -20,8 +20,8 @@ description: >-
 | Path | Role |
 |------|------|
 | `reference/project-persona.md` | Fallback voice and risk frame when the consumer has no overlay |
-| `packs/deep-research.md` | Default fact / grounding prompt template (`mode=deep`) |
-| `packs/prose-review.md` | Default human-voice / AI-artifact cold-read (`mode=search`) |
+| `packs/deep-research.md` | Fact / grounding prompt after Deep Research is confirmed (`mode=deep`) |
+| `packs/prose-review.md` | Human-voice / AI-artifact cold-read (`mode=search`) |
 
 **Project overlay (consumer-owned, never inside this skill folder):**
 
@@ -43,6 +43,20 @@ description: >-
 3. One pack per run.
 
 **MUST** Read the chosen persona before filling a pack.
+
+## Mode: Search first
+
+**CONSTRAINT:** MUST call `perplexity_research` with `mode=search` unless the user asked for Deep Research this turn, or confirmed Deep Research after a Search result.
+
+**CONSTRAINT:** MUST NOT start with `mode=deep` for ordinary lookup ("look this up", "Perplexity this", first pass on a topic).
+
+**CONSTRAINT:** After a Search answer, MUST say what is still thin or contested, then ask whether to run Deep Research. MUST NOT chain `mode=deep` in the same turn without that ask.
+
+**CONSTRAINT:** MUST NOT use Cursor Computer Use for this workflow.
+
+IF the user named Deep Research this turn, MAY use `mode=deep` without a prior Search.
+
+Deep Research is for tricky, contested, or long grounding questions after Search showed what is still unknown. Fill `packs/deep-research.md` only when Deep Research is confirmed.
 
 ## When to invoke
 
@@ -66,7 +80,7 @@ Discover schemas with `GetDynamicTools` (or the host's MCP schema tool) on `user
 ### 1. Prepare prompt
 
 - Read `.cursor/perplexity/project-persona.md` if it exists; else this skill's `reference/project-persona.md`.
-- Fill **one** pack: `.cursor/perplexity/packs/<name>.md` if it exists; else this skill's `packs/<name>.md` (`deep-research` or `prose-review`).
+- Fill **one** pack: `.cursor/perplexity/packs/<name>.md` if it exists; else this skill's `packs/<name>.md`. First pass is Search (`prose-review` or a short prompt). Fill `deep-research` only after Deep Research is confirmed.
 - **No sensitive identifiers in `title_hint`** (employer brand, real names, client labels). Facts in the prompt body are the user's risk choice.
 - Keep the prompt path in chat so the user can re-open it.
 
@@ -91,10 +105,10 @@ Other actions: `close` (stops window; keeps profile), `cancel` (abort in-flight 
 ```text
 perplexity_research
   prompt:     <full pack / prepared text>
-  mode:       deep          # doctrine / literature / long research; use search only for short polish
-  title_hint: <optional short label, no sensitive IDs — thread history hygiene>
+  mode:       search        # default; use deep only after user confirm or an explicit Deep Research ask
+  title_hint: <optional short label, no sensitive IDs (thread history hygiene)>
   session_id: <optional override; default is this workspace folder name>
-  timeout_ms: <optional; Deep research can take many minutes>
+  timeout_ms: <optional; Deep Research can take many minutes>
 ```
 
 **How Deep Research is selected (Perplexity UI):** compose uses a **`/` modality command menu**, not only the old Search pill.
@@ -106,7 +120,7 @@ perplexity_research
 | 3 | Choose **Deep Research** (telescope); click **Use** if the detail pane shows it |
 | 4 | Paste/submit the prepared prompt |
 
-`mode=search` leaves the default Search compose (no `/` Deep Research arming). Prefer `mode=deep` for doctrine and long research; prefer `mode=search` for the prose-review pack.
+`mode=search` leaves the default Search compose (no `/` Deep Research arming). Prefer `mode=search` for the first pass. Prefer `mode=deep` only after the user confirms, or when they named Deep Research this turn.
 
 If automation reports `ui_changed` on mode select, the user can arm Deep Research manually with `/` then tell the assistant to retry submit (or use paste pack).
 

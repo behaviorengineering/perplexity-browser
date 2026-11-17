@@ -32,7 +32,8 @@ Scaffold for this consumer repo. Install the **perplexity-browser** plugin (skil
 
 | Need | Pack | Mode |
 |------|------|------|
-| Facts, sources, grounding | `.cursor/perplexity/packs/deep-research.md` if present, else skill default `packs/deep-research.md` | deep |
+| First lookup / what is still unknown | short prompt (or overlay pack if already filled) | search |
 | Human voice, AI artifacts | `.cursor/perplexity/packs/prose-review.md` if present, else skill default `packs/prose-review.md` | search |
+| Confirmed tricky or contested facts | `.cursor/perplexity/packs/deep-research.md` if present, else skill default `packs/deep-research.md` | deep (after user confirm) |
 
 Consumers MAY add extra files under `.cursor/perplexity/packs/`. Prefer those when they exist for this workflow.

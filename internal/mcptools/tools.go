@@ -27,9 +27,9 @@ func Register(server *mcp.Server, mgr *session.Manager, log *slog.Logger) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "perplexity_research",
-		Description: "Start a new Perplexity thread, select modality (default Deep research via compose `/` command menu), " +
-			"submit a prepared prompt, and wait for the answer. mode=deep types `/` then chooses Deep Research (Use); " +
-			"mode=search leaves the default Search compose.",
+		Description: "Start a new Perplexity thread, select modality (default Search compose), " +
+			"submit a prepared prompt, and wait for the answer. Omit mode or pass mode=search for ordinary Search. " +
+			"mode=deep types `/` then chooses Deep Research (Use). Agents should Search first and only use deep after the user confirms.",
 	}, h.research)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -56,7 +56,7 @@ type sessionIn struct {
 
 type researchIn struct {
 	Prompt    string `json:"prompt" jsonschema:"full prepared prompt text"`
-	Mode      string `json:"mode,omitempty" jsonschema:"deep (default; open compose / modality menu → Deep Research) or search"`
+	Mode      string `json:"mode,omitempty" jsonschema:"search (default; ordinary Search compose) or deep (compose / modality menu then Deep Research)"`
 	TitleHint string `json:"title_hint,omitempty" jsonschema:"optional thread title hint without case PII"`
 	SessionID string `json:"session_id,omitempty" jsonschema:"optional override; default is Cursor workspace folder name from MCP roots"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" jsonschema:"override wait timeout in milliseconds"`

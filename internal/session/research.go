@@ -41,10 +41,14 @@ func (m *Manager) Research(ctx context.Context, prompt, mode, titleHint, session
 		out.Busy = false
 		return out
 	}
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode == "" {
-		mode = perplexity.ModeDeep
+	normalized, err := perplexity.NormalizeMode(mode)
+	if err != nil {
+		out.Status = result.StatusError
+		out.Message = err.Error()
+		out.Busy = false
+		return out
 	}
+	mode = normalized
 	timeoutMS = m.resolveTimeout(mode, timeoutMS)
 
 	page, status := m.preparePage(ctx)
@@ -146,7 +150,7 @@ func (m *Manager) Continue(ctx context.Context, message, threadID, sessionID str
 		return out
 	}
 	if mode == "" {
-		mode = perplexity.ModeDeep
+		mode = perplexity.ModeSearch
 	}
 	timeoutMS = m.resolveTimeout(mode, timeoutMS)
 
