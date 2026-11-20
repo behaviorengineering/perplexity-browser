@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -92,10 +93,10 @@ func (m *Manager) Export(ctx context.Context, threadID, format, saveDir, session
 			return out
 		}
 		if writeErr != nil {
-			uiErr = fmt.Errorf("%v; scrape write: %w", uiErr, writeErr)
+			uiErr = fmt.Errorf("scrape write: %w", errors.Join(uiErr, writeErr))
 		}
 	} else if uiErr != nil {
-		uiErr = fmt.Errorf("%v; scrape: %w", uiErr, scrapeErr)
+		uiErr = fmt.Errorf("scrape: %w", errors.Join(uiErr, scrapeErr))
 	} else {
 		uiErr = scrapeErr
 	}

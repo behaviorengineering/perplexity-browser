@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,13 +37,13 @@ func (m *Manager) connectCDPLocked() error {
 	}
 
 	if launchErr := launchChromeForCDP(m.cfg, m.log); launchErr != nil {
-		return fmt.Errorf("connect over CDP %s: %w; auto-launch failed: %v (quit other Chrome using profile %q, or run scripts/chrome-cdp.sh)", m.cfg.CDPURL, err, launchErr, m.cfg.UserDataDir)
+		return fmt.Errorf("connect over CDP %s: auto-launch failed (quit other Chrome using profile %q, or run scripts/chrome-cdp.sh): %w", m.cfg.CDPURL, m.cfg.UserDataDir, errors.Join(err, launchErr))
 	}
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), cdpReadyTimeout)
 	defer cancel()
 	if waitErr := waitCDPReady(waitCtx, m.cfg.CDPURL, cdpReadyTimeout); waitErr != nil {
-		return fmt.Errorf("connect over CDP %s: %w; Chrome launched but CDP not ready: %v", m.cfg.CDPURL, err, waitErr)
+		return fmt.Errorf("connect over CDP %s: Chrome launched but CDP not ready: %w", m.cfg.CDPURL, errors.Join(err, waitErr))
 	}
 
 	if retryErr := m.tryConnectCDPLocked(); retryErr != nil {
@@ -87,7 +88,8 @@ func (m *Manager) tryConnectCDPLocked() error {
 
 func launchChromeForCDP(cfg config.Config, log interface {
 	Info(msg string, args ...any)
-}) error {
+},
+) error {
 	if err := os.MkdirAll(cfg.UserDataDir, 0o700); err != nil {
 		return fmt.Errorf("create user data dir: %w", err)
 	}

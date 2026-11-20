@@ -1,0 +1,63 @@
+version: "3"
+
+vars:
+  VERSION: '{{.VERSION | default "dev"}}'
+  BIN: perplexity-browser-mcp{{exeExt}}
+
+tasks:
+  default:
+    desc: List local-dev tasks
+    silent: true
+    cmds:
+      - go tool task --list
+      - |
+        echo ""
+        echo "  1. go tool task test"
+        echo "  2. go tool task lint"
+        echo "  3. go tool task build"
+        echo "  4. go tool task smoke"
+
+  format:
+    desc: Format with gofumpt
+    summary: |
+      Runs go tool gofumpt -w on ./cmd and ./internal.
+    cmds:
+      - go tool gofumpt -w ./cmd ./internal
+
+  lint:
+    desc: Run golangci-lint
+    summary: |
+      Runs go tool golangci-lint on ./cmd/... ./internal/....
+      Pass flags after -- when the recipe uses {{.CLI_ARGS}}.
+    cmds:
+      - go tool golangci-lint run --timeout 5m ./cmd/... ./internal/...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Build perplexity-browser-mcp
+    cmds:
+      - go build -o {{.BIN}} ./cmd/perplexity-browser-mcp
+
+  smoke:
+    desc: Session status smoke
+    summary: |
+      Builds and runs cmd/smoke. need_login is OK on a cold profile.
+    cmds:
+      - go run ./cmd/smoke
+
+  smoke-export:
+    desc: Headed export extract smoke
+    summary: |
+      Prints ExtractUserPrompt vs ExtractAnswerText on the active thread.
+      need_login exits 0. Requires headed Chrome and a finished thread.
+    cmds:
+      - go run ./cmd/smoke export

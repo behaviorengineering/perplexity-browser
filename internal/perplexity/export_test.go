@@ -1,6 +1,8 @@
 package perplexity_test
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +34,103 @@ func TestFormatMarkdown(t *testing.T) {
 		if !strings.Contains(md, want) {
 			t.Fatalf("missing %q in:\n%s", want, md)
 		}
+	}
+
+	t.Run("assistant_only", func(t *testing.T) {
+		md := perplexity.FormatMarkdown(perplexity.Conversation{
+			URL:       "https://www.perplexity.ai/search/abc",
+			ThreadID:  "thr_test",
+			Assistant: "First paragraph.\n\nSecond paragraph.",
+			Turns:     1,
+		})
+		if !strings.Contains(md, "## Turn 1 (assistant)") {
+			t.Fatalf("expected assistant turn first:\n%s", md)
+		}
+		if strings.Contains(md, "(user)") {
+			t.Fatalf("must not invent user turn:\n%s", md)
+		}
+	})
+}
+
+func TestConversationFromTexts(t *testing.T) {
+	t.Parallel()
+	ans := "First paragraph.\n\nSecond paragraph."
+	conv, err := perplexity.ConversationFromTexts(
+		"https://www.perplexity.ai/search/x",
+		"thr_x",
+		"",
+		ans,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conv.User != "" {
+		t.Fatalf("user should be empty, got %q", conv.User)
+	}
+	if conv.Assistant != ans {
+		t.Fatalf("assistant=%q want %q", conv.Assistant, ans)
+	}
+	if conv.Turns != 1 {
+		t.Fatalf("turns=%d want 1", conv.Turns)
+	}
+
+	conv, err = perplexity.ConversationFromTexts("", "thr", "First paragraph.", ans, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conv.User != "" {
+		t.Fatalf("prefix user should be cleared, got %q", conv.User)
+	}
+}
+
+func TestPromptTextSelectors(t *testing.T) {
+	t.Parallel()
+	ans := make(map[string]bool)
+	for _, s := range perplexity.AnswerTextSelectors {
+		ans[s] = true
+	}
+	var sawBubble bool
+	for _, s := range perplexity.PromptTextSelectors {
+		if ans[s] {
+			t.Fatalf("prompt selector %q overlaps answer selectors", s)
+		}
+		if s == `[class*="user-bubble"]` {
+			sawBubble = true
+		}
+	}
+	if !sawBubble {
+		t.Fatal(`PromptTextSelectors missing [class*="user-bubble"]`)
+	}
+}
+
+func TestMenuDownloadError(t *testing.T) {
+	t.Parallel()
+	timeout := errors.New("timeout")
+	err := perplexity.MenuDownloadError(
+		"no more-menu download completed",
+		`button[aria-label*="More options" i]`,
+		[]error{
+			fmt.Errorf(`(?i)export\s+as\s+markdown: not found`),
+			fmt.Errorf(`(?i)copy\s+as\s+markdown: not visible: %w`, timeout),
+		},
+	)
+	msg := err.Error()
+	for _, want := range []string{
+		"no more-menu download completed",
+		`opener=button[aria-label*="More options" i]`,
+		`(?i)export\s+as\s+markdown: not found`,
+		`(?i)copy\s+as\s+markdown: not visible:`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("missing %q in %q", want, msg)
+		}
+	}
+	if !errors.Is(err, timeout) {
+		t.Fatalf("wrapped timeout not reachable via errors.Is: %v", err)
+	}
+	if perplexity.CodeOf(err) != perplexity.CodeUnavailable {
+		t.Fatalf("code %q", perplexity.CodeOf(err))
 	}
 }
 

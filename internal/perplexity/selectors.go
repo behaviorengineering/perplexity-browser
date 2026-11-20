@@ -65,6 +65,17 @@ var (
 		// Do not use bare `main`: related/sources keep mutating length after the answer finishes.
 	}
 
+	// PromptTextSelectors are explicit user-turn targets only. A miss is OK; scrape export
+	// falls back to assistant-only (do not reuse AnswerTextSelectors).
+	// [class*="user-bubble"] is the /session/ library bubble (Tailwind group/user-bubble);
+	// that page has no user-message / query / thread-query testids.
+	PromptTextSelectors = []string{
+		`[data-testid="user-message"]`,
+		`[data-testid="query"]`,
+		`[data-testid="thread-query"]`,
+		`[class*="user-bubble"]`,
+	}
+
 	CitationLinkSelector = `main a[href^="http"]`
 
 	ShareButtonPattern = regexp.MustCompile(`(?i)^share$`)

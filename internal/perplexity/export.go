@@ -1,11 +1,13 @@
 package perplexity
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
@@ -25,25 +27,22 @@ type Conversation struct {
 	Turns     int
 }
 
-// ScrapeConversation builds a structured read of the current thread page.
-func ScrapeConversation(page playwright.Page, threadID string) (Conversation, error) {
-	out := Conversation{ThreadID: threadID}
-	if page == nil {
-		return out, fmt.Errorf("no page")
+// ConversationFromTexts builds export conversation fields from separate user and assistant extracts.
+func ConversationFromTexts(url, threadID, user, assistant string, cits []result.Citation) (Conversation, error) {
+	out := Conversation{
+		URL:       url,
+		ThreadID:  threadID,
+		User:      cleanExportedText(user),
+		Assistant: cleanExportedText(assistant),
+		Citations: cits,
 	}
-	out.URL = page.URL()
-
-	raw, err := ExtractAnswerText(page)
-	if err != nil {
-		return out, err
+	userNorm := strings.TrimSpace(out.User)
+	asstNorm := strings.TrimSpace(out.Assistant)
+	if userNorm != "" {
+		if userNorm == asstNorm || (asstNorm != "" && strings.HasPrefix(asstNorm, userNorm)) {
+			out.User = ""
+		}
 	}
-	userPrompt, assistant := splitPromptAndAnswer(raw)
-	out.User = cleanExportedText(userPrompt)
-	out.Assistant = cleanExportedText(assistant)
-	if out.Assistant == "" {
-		out.Assistant = cleanExportedText(raw)
-	}
-	out.Citations = ExtractCitations(page)
 	out.Turns = 0
 	if out.User != "" {
 		out.Turns++
@@ -52,41 +51,91 @@ func ScrapeConversation(page playwright.Page, threadID string) (Conversation, er
 		out.Turns++
 	}
 	if out.Turns == 0 {
-		return out, fmt.Errorf("no conversation text found on page")
+		return out, newErr("ConversationFromTexts", CodeInvalid, "no conversation text found on page", nil)
 	}
 	return out, nil
 }
 
+// ScrapeConversation builds a structured read of the current thread page.
+func ScrapeConversation(page playwright.Page, threadID string) (Conversation, error) {
+	out := Conversation{ThreadID: threadID}
+	if page == nil {
+		return out, newErr("ScrapeConversation", CodeInvalid, "no page", nil)
+	}
+	user, err := ExtractUserPrompt(page)
+	if err != nil {
+		return out, err
+	}
+	assistant, err := ExtractAnswerText(page)
+	if err != nil {
+		return out, err
+	}
+	cits := ExtractCitations(page)
+	return ConversationFromTexts(page.URL(), threadID, user, assistant, cits)
+}
+
+const markdownTpl = `# Perplexity export
+URL: {{.URL}}
+Thread: {{.ThreadID}}
+Exported: {{.Exported}}
+{{if .User}}
+## Turn {{.UserTurn}} (user)
+
+{{.User}}
+{{end}}{{if .Assistant}}
+## Turn {{.AsstTurn}} (assistant)
+
+{{.Assistant}}
+{{if .Citations}}
+### Citations
+{{range .Citations}}- [{{citationTitle .}}]({{.URL}})
+{{end}}{{end}}{{end}}`
+
+var markdownTemplate = template.Must(template.New("export").Funcs(template.FuncMap{
+	"citationTitle": func(c result.Citation) string {
+		if c.Title != "" {
+			return c.Title
+		}
+		return c.URL
+	},
+}).Parse(markdownTpl))
+
+type markdownView struct {
+	URL       string
+	ThreadID  string
+	Exported  string
+	User      string
+	Assistant string
+	UserTurn  int
+	AsstTurn  int
+	Citations []result.Citation
+}
+
 // FormatMarkdown renders a conversation export body.
 func FormatMarkdown(c Conversation) string {
-	var b strings.Builder
-	b.WriteString("# Perplexity export\n")
-	b.WriteString("URL: ")
-	b.WriteString(c.URL)
-	b.WriteString("\nThread: ")
-	b.WriteString(c.ThreadID)
-	b.WriteString("\nExported: ")
-	b.WriteString(time.Now().UTC().Format(time.RFC3339))
-	b.WriteString("\n\n")
+	return formatMarkdownAt(c, time.Now().UTC())
+}
 
+func formatMarkdownAt(c Conversation, now time.Time) string {
+	view := markdownView{
+		URL:       c.URL,
+		ThreadID:  c.ThreadID,
+		Exported:  now.Format(time.RFC3339),
+		User:      c.User,
+		Assistant: c.Assistant,
+		Citations: c.Citations,
+	}
 	turn := 1
 	if c.User != "" {
-		fmt.Fprintf(&b, "## Turn %d (user)\n\n%s\n\n", turn, c.User)
+		view.UserTurn = turn
 		turn++
 	}
 	if c.Assistant != "" {
-		fmt.Fprintf(&b, "## Turn %d (assistant)\n\n%s\n\n", turn, c.Assistant)
-		if len(c.Citations) > 0 {
-			b.WriteString("### Citations\n")
-			for _, cit := range c.Citations {
-				title := cit.Title
-				if title == "" {
-					title = cit.URL
-				}
-				fmt.Fprintf(&b, "- [%s](%s)\n", title, cit.URL)
-			}
-			b.WriteString("\n")
-		}
+		view.AsstTurn = turn
+	}
+	var b strings.Builder
+	if err := markdownTemplate.Execute(&b, view); err != nil {
+		return ""
 	}
 	return b.String()
 }
@@ -109,6 +158,10 @@ func WriteExportFile(dir, threadID, markdown string) (string, error) {
 
 // ExportTargetPath builds a stable markdown path under dir.
 func ExportTargetPath(dir, threadID, label string) string {
+	return exportTargetPathAt(dir, threadID, label, time.Now().UTC())
+}
+
+func exportTargetPathAt(dir, threadID, label string, now time.Time) string {
 	id := threadID
 	if id == "" {
 		id = "thr_unknown"
@@ -117,7 +170,7 @@ func ExportTargetPath(dir, threadID, label string) string {
 	if lab == "" {
 		lab = "export"
 	}
-	name := time.Now().UTC().Format("20060102T150405Z") + "-" + sanitizeFilePart(id) + "-" + lab + ".md"
+	name := now.UTC().Format("20060102T150405Z") + "-" + sanitizeFilePart(id) + "-" + lab + ".md"
 	return filepath.Join(dir, name)
 }
 
@@ -149,88 +202,121 @@ func EnsureMarkdownExt(name string) string {
 // ExpectDownload + SaveAs rather than polling ExportDir for *.md.
 func TryUIExportMarkdown(page playwright.Page, exportDir, threadID string) (string, error) {
 	if page == nil {
-		return "", fmt.Errorf("no page")
+		return "", newErr("TryUIExportMarkdown", CodeInvalid, "no page", nil)
 	}
 	if err := os.MkdirAll(exportDir, 0o700); err != nil {
-		return "", err
+		return "", newErr("TryUIExportMarkdown", CodeUnavailable, "mkdir export dir", err)
 	}
 	_ = dismissCookieBannerSafe(page)
 
-	var errs []string
+	var errs []error
 
 	if p, err := tryMoreMenuDownload(page, exportDir, threadID); err == nil && p != "" {
 		return p, nil
 	} else if err != nil {
-		errs = append(errs, "more_menu: "+err.Error())
+		errs = append(errs, fmt.Errorf("more_menu: %w", err))
 	}
 
 	if p, err := tryDeepResearchDownload(page, exportDir, threadID); err == nil && p != "" {
 		return p, nil
 	} else if err != nil {
-		errs = append(errs, "deep_research: "+err.Error())
-	}
-
-	// Longer poll so a manual ⋯ → Export into ExportDir can still be picked up.
-	if p := waitForNewestExportFile(exportDir, 8*time.Second); p != "" {
-		return NormalizeExportFile(p, exportDir, threadID, "poll")
+		errs = append(errs, fmt.Errorf("deep_research: %w", err))
 	}
 
 	if len(errs) == 0 {
-		return "", fmt.Errorf("markdown export UI path not completed")
+		return "", newErr("TryUIExportMarkdown", CodeUnavailable, "markdown export UI path not completed", nil)
 	}
-	return "", fmt.Errorf("markdown export UI path not completed (%s)", strings.Join(errs, "; "))
+	return "", newErr("TryUIExportMarkdown", CodeUnavailable, "markdown export UI path not completed", errors.Join(errs...))
+}
+
+// MenuDownloadError joins the menu opener id and per-label attempt failures for diagnostics.
+func MenuDownloadError(summary, opener string, attempts []error) error {
+	var parts []error
+	if opener != "" {
+		parts = append(parts, fmt.Errorf("opener=%s", opener))
+	}
+	parts = append(parts, attempts...)
+	return newErr("MenuDownloadError", CodeUnavailable, summary, errors.Join(parts...))
 }
 
 func tryMoreMenuDownload(page playwright.Page, exportDir, threadID string) (string, error) {
-	if err := openMoreOptionsMenu(page); err != nil {
+	opener, err := openMoreOptionsMenu(page)
+	if err != nil {
 		return "", err
 	}
 	// Give the menu a moment to mount.
 	time.Sleep(350 * time.Millisecond)
 
+	var attempts []error
 	for _, label := range ExportMenuPatterns {
 		loc := findExportControl(page, label)
 		if loc == nil {
+			attempts = append(attempts, fmt.Errorf("%s: not found", label))
 			continue
 		}
 		if err := waitLocatorVisible(loc, 2_500); err != nil {
+			attempts = append(attempts, fmt.Errorf("%s: not visible: %w", label, err))
 			continue
 		}
 		path, err := clickExpectSaveDownload(page, loc, exportDir, threadID, "more-menu")
 		if err == nil && path != "" {
 			return path, nil
 		}
+		if err != nil {
+			attempts = append(attempts, fmt.Errorf("%s: download: %w", label, err))
+		} else {
+			attempts = append(attempts, fmt.Errorf("%s: download: empty path", label))
+		}
 	}
 	// Close menu so Deep Research controls stay clickable.
 	_ = page.Keyboard().Press("Escape")
-	return "", fmt.Errorf("no more-menu download completed")
+	return "", MenuDownloadError("no more-menu download completed", opener, attempts)
 }
 
-func openMoreOptionsMenu(page playwright.Page) error {
+func openMoreOptionsMenu(page playwright.Page) (string, error) {
 	force := playwright.LocatorClickOptions{Force: playwright.Bool(true), Timeout: playwright.Float(5_000)}
+	var clickErrs []error
 
 	for _, re := range MoreOptionsNamePatterns {
 		loc := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: re})
-		if n, _ := loc.Count(); n > 0 {
-			if err := loc.First().Click(force); err == nil {
-				return nil
-			}
+		n, err := loc.Count()
+		if err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("count role=%s: %w", re.String(), err))
+			continue
 		}
+		if n == 0 {
+			continue
+		}
+		if err := loc.First().Click(force); err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("click role=%s: %w", re.String(), err))
+			continue
+		}
+		return "role=button name=" + re.String(), nil
 	}
 	for _, sel := range MoreOptionsAriaSelectors {
 		loc := page.Locator(sel)
-		if n, _ := loc.Count(); n == 0 {
+		n, err := loc.Count()
+		if err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("count %s: %w", sel, err))
 			continue
 		}
-		// Prefer toolbar control near Share when several aria-haspopup menus exist.
-		if err := loc.First().Click(force); err == nil {
-			return nil
+		if n == 0 {
+			continue
 		}
+		if err := loc.First().Click(force); err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("click %s: %w", sel, err))
+			continue
+		}
+		return sel, nil
 	}
 
 	share := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: ShareButtonPattern})
-	if n, err := share.Count(); err != nil || n == 0 {
-		return fmt.Errorf("more options control not found")
+	n, err := share.Count()
+	if err != nil {
+		return "", newErr("openMoreOptionsMenu", CodeUnavailable, "more options control not found", errors.Join(append(clickErrs, err)...))
+	}
+	if n == 0 {
+		return "", newErr("openMoreOptionsMenu", CodeUnavailable, "more options control not found", errors.Join(clickErrs...))
 	}
 	// ⋯ is the button immediately left of Share in the thread toolbar.
 	for _, xp := range []string{
@@ -238,30 +324,46 @@ func openMoreOptionsMenu(page playwright.Page) error {
 		`xpath=preceding::button[1]`,
 	} {
 		near := share.First().Locator(xp)
-		if n, _ := near.Count(); n > 0 {
-			if err := near.First().Click(force); err == nil {
-				return nil
-			}
+		n, err := near.Count()
+		if err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("count %s: %w", xp, err))
+			continue
 		}
+		if n == 0 {
+			continue
+		}
+		if err := near.First().Click(force); err != nil {
+			clickErrs = append(clickErrs, fmt.Errorf("click %s: %w", xp, err))
+			continue
+		}
+		return "share-toolbar:" + xp, nil
 	}
-	return fmt.Errorf("more options control not found (⋯ next to Share)")
+	return "", newErr("openMoreOptionsMenu", CodeUnavailable, "more options control not found (next to Share)", errors.Join(clickErrs...))
 }
 
 func tryDeepResearchDownload(page playwright.Page, exportDir, threadID string) (string, error) {
+	var attempts []error
 	for _, label := range DeepResearchDownloadPatterns {
 		loc := findExportControl(page, label)
 		if loc == nil {
+			attempts = append(attempts, fmt.Errorf("%s: not found", label))
 			continue
 		}
 		if err := waitLocatorVisible(loc, 1_500); err != nil {
+			attempts = append(attempts, fmt.Errorf("%s: not visible: %w", label, err))
 			continue
 		}
 		path, err := clickExpectSaveDownload(page, loc, exportDir, threadID, "deep-research")
 		if err == nil && path != "" {
 			return path, nil
 		}
+		if err != nil {
+			attempts = append(attempts, fmt.Errorf("%s: download: %w", label, err))
+		} else {
+			attempts = append(attempts, fmt.Errorf("%s: download: empty path", label))
+		}
 	}
-	return "", fmt.Errorf("no deep research download control completed")
+	return "", MenuDownloadError("no deep research download control completed", "", attempts)
 }
 
 func findExportControl(page playwright.Page, label string) playwright.Locator {
@@ -348,66 +450,6 @@ func IsPDFBytes(b []byte) bool {
 	return len(b) >= 5 && string(b[:5]) == "%PDF-"
 }
 
-func waitForNewestExportFile(dir string, timeout time.Duration) string {
-	if timeout <= 0 {
-		return newestExportFile(dir)
-	}
-	deadline := time.Now().Add(timeout)
-	for {
-		if p := newestExportFile(dir); p != "" {
-			return p
-		}
-		if time.Now().After(deadline) {
-			return ""
-		}
-		time.Sleep(150 * time.Millisecond)
-	}
-}
-
-func newestExportFile(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	var best string
-	var bestMod time.Time
-	cutoff := time.Now().Add(-2 * time.Minute)
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		lower := strings.ToLower(name)
-		if LooksLikePDFName(name) {
-			continue
-		}
-		// Accept .md / .markdown / .txt and extensionless GUID downloads.
-		ok := strings.HasSuffix(lower, ".md") ||
-			strings.HasSuffix(lower, ".markdown") ||
-			strings.HasSuffix(lower, ".txt") ||
-			!strings.Contains(name, ".")
-		if !ok {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || info.Size() < 32 {
-			continue
-		}
-		path := filepath.Join(dir, name)
-		if head, err := os.ReadFile(path); err == nil && IsPDFBytes(head) {
-			continue
-		}
-		if info.ModTime().Before(cutoff) {
-			continue
-		}
-		if best == "" || info.ModTime().After(bestMod) {
-			best = path
-			bestMod = info.ModTime()
-		}
-	}
-	return best
-}
-
 // NormalizeExportFile copies extensionless / non-md downloads into a stable .md path.
 func NormalizeExportFile(src, exportDir, threadID, label string) (string, error) {
 	if src == "" {
@@ -440,39 +482,6 @@ func NormalizeExportFile(src, exportDir, threadID, label string) (string, error)
 		return target, nil
 	}
 	return abs, nil
-}
-
-func splitPromptAndAnswer(raw string) (user, assistant string) {
-	lines := strings.Split(raw, "\n")
-	// Heuristic: first non-noise block is user, rest is assistant after a blank or after prompt echo.
-	var buf []string
-	phase := "lead"
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-		if noiseLine.MatchString(trim) {
-			continue
-		}
-		if phase == "lead" {
-			if trim == "" {
-				if len(buf) > 0 {
-					user = strings.TrimSpace(strings.Join(buf, "\n"))
-					buf = nil
-					phase = "answer"
-				}
-				continue
-			}
-			buf = append(buf, line)
-			continue
-		}
-		buf = append(buf, line)
-	}
-	if phase == "lead" {
-		// Single block: treat as assistant if it looks like an answer.
-		assistant = strings.TrimSpace(strings.Join(buf, "\n"))
-		return "", assistant
-	}
-	assistant = strings.TrimSpace(strings.Join(buf, "\n"))
-	return user, assistant
 }
 
 func cleanExportedText(s string) string {
