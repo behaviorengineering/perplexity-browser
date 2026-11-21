@@ -2,6 +2,7 @@
 package perplexity
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -342,7 +343,7 @@ func setModeViaSlashCommand(page playwright.Page, mode string) error {
 	}); err != nil {
 		// Keyboard fallback when contenteditable rejects PressSequentially.
 		if err2 := page.Keyboard().Type("/"); err2 != nil {
-			return fmt.Errorf("type / for modalities: %w (keyboard: %v)", err, err2)
+			return fmt.Errorf("type / for modalities: %w", errors.Join(err, err2))
 		}
 	}
 	_ = waitComposeReady(page, 2_000)
@@ -565,7 +566,7 @@ func SubmitPrompt(page playwright.Page, prompt string) error {
 			Delay: playwright.Float(1),
 		}); err != nil {
 			if err2 := box.Fill(prompt); err2 != nil {
-				return fmt.Errorf("type prompt: %w (fill: %v)", err, err2)
+				return fmt.Errorf("type prompt: %w", errors.Join(err, err2))
 			}
 		}
 	}
@@ -577,10 +578,39 @@ func SubmitPrompt(page playwright.Page, prompt string) error {
 			return fmt.Errorf("submit: %w", err)
 		}
 		if err2 := submit.First().Click(); err2 != nil {
-			return fmt.Errorf("submit enter: %w; click: %v", err, err2)
+			return fmt.Errorf("submit enter: %w", errors.Join(err, err2))
 		}
 	}
 	return nil
+}
+
+// ExtractUserPrompt returns the first non-chrome user prompt match, or empty if selectors miss.
+func ExtractUserPrompt(page playwright.Page) (string, error) {
+	if page == nil {
+		return "", newErr("ExtractUserPrompt", CodeInvalid, "no page", nil)
+	}
+	for _, sel := range PromptTextSelectors {
+		loc := page.Locator(sel)
+		n, err := loc.Count()
+		if err != nil {
+			return "", newErr("ExtractUserPrompt", CodeUnavailable, "count "+sel, err)
+		}
+		if n == 0 {
+			continue
+		}
+		for i := 0; i < n; i++ {
+			text, err := loc.Nth(i).InnerText()
+			if err != nil {
+				return "", newErr("ExtractUserPrompt", CodeUnavailable, "inner text "+sel, err)
+			}
+			text = NormalizeUserPrompt(text)
+			if text == "" || IsFollowUpChrome(text) {
+				continue
+			}
+			return text, nil
+		}
+	}
+	return "", nil
 }
 
 // ExtractAnswerText returns best-effort latest assistant prose.

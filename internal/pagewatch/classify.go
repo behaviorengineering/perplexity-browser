@@ -77,8 +77,9 @@ func IsInThreadURL(u string) bool {
 	return id != "" && id != "new"
 }
 
-// searchID returns the first /search/ path segment. ok is false when the URL is
-// not a perplexity.ai /search route. id is empty for bare /search.
+// Returns the first /search/ path segment of a Perplexity thread URL.
+// Reports ok false when the URL is not a perplexity.ai /search route.
+// ID is empty for bare /search.
 func searchID(pu *url.URL) (id string, ok bool) {
 	if pu == nil {
 		return "", false

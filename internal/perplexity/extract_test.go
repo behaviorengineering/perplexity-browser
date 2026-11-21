@@ -7,6 +7,27 @@ import (
 	"github.com/behaviorengineering/perplexity-browser/internal/perplexity"
 )
 
+func TestNormalizeUserPrompt(t *testing.T) {
+	t.Parallel()
+	const prompt = "I am a solo freelancer / small business selling professional services."
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{prompt, prompt},
+		{"09:44\n\n" + prompt + "\n\nRead more", prompt},
+		{"9:05\n" + prompt, prompt},
+		{prompt + "\nRead more", prompt},
+		{"Read more", ""},
+		{"Ask about Read more in the docs.", "Ask about Read more in the docs."},
+	}
+	for _, tc := range cases {
+		if got := perplexity.NormalizeUserPrompt(tc.in); got != tc.want {
+			t.Fatalf("in %q: got %q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestIsFollowUpChrome(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

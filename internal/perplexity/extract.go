@@ -8,6 +8,21 @@ import (
 // followUpDockBlob matches the follow-up composer chrome as one flattened phrase.
 var followUpDockBlob = regexp.MustCompile(`(?is)^(?:ask a follow-up\s*)?(?:search\s+)?(?:computer\s+)?(?:model\s*)?$`)
 
+// userBubbleClockPrefix is the time label at the start of a /session/ user bubble.
+var userBubbleClockPrefix = regexp.MustCompile(`\A\d{1,2}:\d{2}\s*`)
+
+// userBubbleReadMoreSuffix is the collapsed-query control left in user-bubble innerText.
+var userBubbleReadMoreSuffix = regexp.MustCompile(`(?i)\s*Read more\s*\z`)
+
+// NormalizeUserPrompt strips /session/ bubble chrome (clock prefix, trailing Read more).
+func NormalizeUserPrompt(s string) string {
+	s = strings.TrimSpace(s)
+	s = userBubbleClockPrefix.ReplaceAllString(s, "")
+	s = strings.TrimSpace(s)
+	s = userBubbleReadMoreSuffix.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
+}
+
 // IsFollowUpChrome reports whether s is only the follow-up dock (Ask a follow-up /
 // Search / Computer / Model), not assistant prose.
 func IsFollowUpChrome(s string) bool {
